@@ -62,3 +62,6 @@ TestResults/
 coverage/
 *.coverage
 *.coveragexml
+
+# Agents
+.agents
