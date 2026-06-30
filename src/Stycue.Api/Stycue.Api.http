@@ -1,0 +1,6 @@
+@Stycue.Api_HostAddress = http://localhost:5097
+
+GET {{Stycue.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

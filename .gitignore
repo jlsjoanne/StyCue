@@ -1,0 +1,64 @@
+# Build output
+bin/
+obj/
+publish/
+artifacts/
+.dotnet/
+.nuget/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# JetBrains Rider
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+secrets.json
+appsettings.Production.json
+appsettings.Local.json
+appsettings.*.local.json
+appsettings.Secrets.json
+*.publishsettings
+*.pfx
+*.pem
+*.key
+
+# Azure / publish profiles
+*.pubxml
+*.pubxml.user
+Properties/ServiceDependencies/
+Properties/serviceDependencies.*.json
+
+# Database/data dumps
+*.bak
+*.bacpac
+*.dacpac
+*.mdf
+*.ldf
+
+# Logs
+logs/
+*.log
+
+# Test results / coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
