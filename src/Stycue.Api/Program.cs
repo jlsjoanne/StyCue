@@ -1,4 +1,6 @@
 
+using Scalar.AspNetCore;
+
 namespace Stycue.Api
 {
     public class Program
@@ -19,6 +21,7 @@ namespace Stycue.Api
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
+                app.MapScalarApiReference();
             }
 
             app.UseHttpsRedirection();
