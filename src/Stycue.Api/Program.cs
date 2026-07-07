@@ -1,4 +1,4 @@
-
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -7,6 +7,7 @@ using Stycue.Api.Data;
 using Stycue.Api.Options;
 using Stycue.Api.Services;
 using Stycue.Api.Services.Interfaces;
+using Stycue.Api.Entities;
 
 namespace Stycue.Api
 {
@@ -21,7 +22,10 @@ namespace Stycue.Api
             builder.Services.AddControllers();
 
             // Add Options
-
+            builder.Services.Configure<JwtOptions>(
+                builder.Configuration.GetSection("Jwt"));
+            builder.Services.Configure<GoogleAuthOptions>(
+                builder.Configuration.GetSection("GoogleAuth"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -29,6 +33,8 @@ namespace Stycue.Api
                     builder.Configuration.GetConnectionString("DefaultConnection")));
 
             // Cors 跨域設定
+            var corsPolicy = builder.Configuration["Cors:Policy"] ?? "Frontend";
+
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("Frontend", policy =>
@@ -36,6 +42,10 @@ namespace Stycue.Api
                     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 
                     policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+                });
+                options.AddPolicy("All", policy =>
+                {
+                    policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
                 });
             });
 
@@ -92,8 +102,12 @@ namespace Stycue.Api
 
 
             // Application Services
+
             builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-            
+
+            // DI 建立 PasswordService 時，需要知道 IPasswordHasher<User> 要用哪個實作類別
+            builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+            builder.Services.AddScoped<IPasswordService, PasswordService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -114,7 +128,7 @@ namespace Stycue.Api
             // Middleware pipeline
             app.UseHttpsRedirection();
 
-            app.UseCors("Frontend");
+            app.UseCors(corsPolicy);
 
             app.UseAuthentication();
             app.UseAuthorization();

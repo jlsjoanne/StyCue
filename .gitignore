@@ -65,3 +65,7 @@ coverage/
 
 # Agents
 .agents
+
+# FTP Info
+*.pubxml.user
+*.publishsettings

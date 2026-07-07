@@ -4,7 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Options;
 using Stycue.Api.Options;
 using Stycue.Api.Services.Interfaces;
-using Stycue.Api.DTOs.Jwt;
+using Stycue.Api.Services.Models;
 
 
 namespace Stycue.Api.Services

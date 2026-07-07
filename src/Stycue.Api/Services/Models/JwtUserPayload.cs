@@ -1,4 +1,4 @@
-﻿namespace Stycue.Api.DTOs.Jwt
+﻿namespace Stycue.Api.Services.Models
 {
     public class JwtUserPayload
     {

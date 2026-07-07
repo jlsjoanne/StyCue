@@ -1,5 +1,5 @@
 ﻿using System.Security.Claims;
-using Stycue.Api.DTOs.Jwt;
+using Stycue.Api.Services.Models;
 
 namespace Stycue.Api.Services.Interfaces
 {
