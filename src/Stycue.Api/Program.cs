@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
@@ -113,7 +114,37 @@ namespace Stycue.Api
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-            builder.Services.AddOpenApi();
+            var docs = builder.Configuration.GetSection(ApiDocOptions.SectionName)
+                .Get<ApiDocOptions>() ?? new();
+
+            // 啟用 OpenAPI 文件，設定文件標題/版本，並告訴 Scalar 這份 API 支援 JWT Bearer 認證
+            if (docs.Enabled)
+            {
+                builder.Services.AddOpenApi(docs.Version, options =>
+                {
+                    options.AddDocumentTransformer((document, _, _) =>
+                    {
+                        document.Info = new OpenApiInfo
+                        {
+                            Title = docs.Title,
+                            Version = docs.Version
+                        };
+
+                        document.Components ??= new OpenApiComponents();
+                        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+
+                        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+                        {
+                            Type = SecuritySchemeType.Http,
+                            Scheme = "bearer",
+                            BearerFormat = "JWT"
+                        };
+
+                        return Task.CompletedTask;
+                    });
+                });
+            }
+
 
 
             var app = builder.Build();
@@ -121,10 +152,15 @@ namespace Stycue.Api
             // Configure the HTTP request pipeline.
 
             // Development-only API docs
-            if (app.Environment.IsDevelopment())
+            if (docs.Enabled && (app.Environment.IsDevelopment() || app.Environment.IsStaging()))
             {
                 app.MapOpenApi();
-                app.MapScalarApiReference();
+                app.MapScalarApiReference(docs.Route, options =>
+                {
+                    options.WithTitle(docs.Title);
+                    options.AddPreferredSecuritySchemes("Bearer");
+                    options.DisableAgent();
+                });
             }
 
             // Middleware pipeline
