@@ -16,7 +16,13 @@ namespace Stycue.Api.Controllers
             _dbContext = dbContext;
         }
 
+        /// <summary>
+        /// 檢查資料庫連線是否正常
+        /// </summary>
+        /// <returns>資料庫連線狀態</returns>
+        /// <response code="200">成功取得資料庫連線狀態</response>
         [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Get()
         {
             var canConnect = await _dbContext.Database.CanConnectAsync();

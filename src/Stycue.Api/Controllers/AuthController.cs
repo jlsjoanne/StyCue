@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Stycue.Api.DTOs.Auth;
+using Stycue.Api.DTOs.Comm;
 using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Controllers
@@ -24,6 +25,8 @@ namespace Stycue.Api.Controllers
         /// <response code="200">註冊成功</response>
         /// <response code="400">註冊資料錯誤或 Email 已被註冊</response>
         [HttpPost("register")]
+        [ProducesResponseType(typeof(ApiResponse<RegisterResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<RegisterResponse>), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register(RegisterRequest request)
         {
             var result = await _authService.RegisterAsync(request);
@@ -44,6 +47,8 @@ namespace Stycue.Api.Controllers
         /// <response code="200">登入成功</response>
         /// <response code="401">帳號或密碼錯誤</response>
         [HttpPost("login")]
+        [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Login(LoginRequest request)
         {
             var result = await _authService.LoginAsync(request);
@@ -64,6 +69,8 @@ namespace Stycue.Api.Controllers
         /// <response code="200">Google 登入成功</response>
         /// <response code="401">Google Token 驗證失敗</response>
         [HttpPost("google-login")]
+        [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GoogleLogin(GoogleLoginRequest request)
         {
             var result = await _authService.GoogleLoginAsync(request);
