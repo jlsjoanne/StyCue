@@ -108,6 +108,8 @@ namespace Stycue.Api
             // DI 建立 PasswordService 時，需要知道 IPasswordHasher<User> 要用哪個實作類別
             builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
             builder.Services.AddScoped<IPasswordService, PasswordService>();
+            builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
+            builder.Services.AddScoped<IAuthService, AuthService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
