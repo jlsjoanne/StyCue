@@ -25,6 +25,11 @@ namespace Stycue.Api.Services
             // get secretKey from local: user-secrets / VM: environment variables
             var secretKey = _configuration["Jwt:SecretKey"];
 
+            if (String.IsNullOrWhiteSpace(secretKey))
+            {
+                throw new InvalidOperationException("Jwt:SecretKey is missing.");
+            }
+
             // input => claim
             var claims = new List<Claim>
             {
@@ -35,8 +40,20 @@ namespace Stycue.Api.Services
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
+            // check key is Base64
+            byte[] keyBytes;
+
+            try
+            {
+                keyBytes = Convert.FromBase64String(secretKey);
+            }
+            catch(FormatException ex)
+            {
+                throw new InvalidOperationException("Jwt:SecretKey must be a valid Base64 string.", ex);
+            }
+
             // set key to use
-            var key = new SymmetricSecurityKey(Convert.FromBase64String(secretKey));
+            var key = new SymmetricSecurityKey(keyBytes);
 
             // set credentials algorithms
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha512);
