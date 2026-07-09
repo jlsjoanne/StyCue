@@ -27,6 +27,8 @@ namespace Stycue.Api
                 builder.Configuration.GetSection("Jwt"));
             builder.Services.Configure<GoogleAuthOptions>(
                 builder.Configuration.GetSection("GoogleAuth"));
+            builder.Services.Configure<BlobStorageOptions>(
+                builder.Configuration.GetSection("BlobStorage"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -111,6 +113,8 @@ namespace Stycue.Api
             builder.Services.AddScoped<IPasswordService, PasswordService>();
             builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
+
+            //待加 ImageService
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

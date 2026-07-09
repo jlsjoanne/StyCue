@@ -6,6 +6,7 @@ using Stycue.Api.DTOs.Comm;
 using Stycue.Api.Entities;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Services.Models;
+using Stycue.Api.Constants;
 
 namespace Stycue.Api.Services
 {
@@ -94,6 +95,11 @@ namespace Stycue.Api.Services
                 return ApiResponse<LoginResponse>.FailResult("帳號或密碼錯誤");
             }
 
+            if(user.DeactivatedAt != null)
+            {
+                return ApiResponse<LoginResponse>.FailResult("此帳號目前無法使用，請聯繫客服或管理員", AuthErrorCodes.AccountDeactivated);
+            }
+
             // 檢查使用者是否有 PasswordHash => 若沒有，則可能為Google註冊登入，回傳使用Google登入
             if(String.IsNullOrWhiteSpace(user.PasswordHash))
             {
@@ -145,7 +151,7 @@ namespace Stycue.Api.Services
 
             if(googlePayload == null)
             {
-                return ApiResponse<LoginResponse>.FailResult("Google登入驗證失敗");
+                return ApiResponse<LoginResponse>.FailResult("Google登入驗證失敗", AuthErrorCodes.GoogleTokenInvalid);
             }
 
             var normalizedEmail = googlePayload.Email.Trim().ToLowerInvariant();
@@ -156,6 +162,11 @@ namespace Stycue.Api.Services
             if(user == null)
             {
                 user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+            }
+
+            if(user != null && user.DeactivatedAt != null)
+            {
+                return ApiResponse<LoginResponse>.FailResult("此帳號目前無法使用，請聯繫客服或管理員", AuthErrorCodes.AccountDeactivated);
             }
 
             if(user != null && String.IsNullOrWhiteSpace(user.GoogleSub))

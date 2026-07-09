@@ -23,13 +23,16 @@ namespace Stycue.Api.Entities
         [MaxLength(100)]
         public string? GoogleSub { get; set; }
 
-        [MaxLength(500)]
-        public string? AvatarUrl { get; set; }
+        public int? AvatarImageId { get; set; }
+
+        public ImageAsset? AvatarImage { get; set; }
 
         public bool IsEmailVerified { get; set; } = false;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? UpdatedAt { get; set; }
+
+        public DateTime? DeactivatedAt { get; set; }
     }
 }
