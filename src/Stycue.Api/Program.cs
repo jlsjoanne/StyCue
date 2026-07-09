@@ -9,6 +9,8 @@ using Stycue.Api.Options;
 using Stycue.Api.Services;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Entities;
+using Stycue.Api.Middlewares;
+using Stycue.Api.DTOs.Comm;
 
 namespace Stycue.Api
 {
@@ -95,6 +97,31 @@ namespace Stycue.Api
                         ValidateIssuerSigningKey = true,
                         IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(jwtSecretKeys))
                     };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnChallenge = async context =>
+                        {
+                            // 呼叫HandleResponse原因 => 這次 401 response 我自己處理，框架不要再寫預設 challenge response。
+                            context.HandleResponse();
+
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            context.Response.ContentType = "application/json; charset=utf-8";
+
+                            var response = ApiResponse<object>.FailResult("未登入或登入資訊無效", "UNAUTHORIZED");
+
+                            await context.Response.WriteAsJsonAsync(response);
+                        },
+                        OnForbidden = async context =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.ContentType = "application/json; charset=utf-8";
+
+                            var response = ApiResponse<object>.FailResult("沒有權限執行此操作", "FORBIDDEN");
+
+                            await context.Response.WriteAsJsonAsync(response);
+                        }
+                    };
                 });
 
 
@@ -113,6 +140,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IPasswordService, PasswordService>();
             builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 
             //待加 ImageService
 
@@ -168,6 +196,10 @@ namespace Stycue.Api
             }
 
             // Middleware pipeline
+
+            // exception middleware
+            app.UseMiddleware<GlobalExceptionMiddleware>();
+
             app.UseHttpsRedirection();
 
             app.UseCors(corsPolicy);
