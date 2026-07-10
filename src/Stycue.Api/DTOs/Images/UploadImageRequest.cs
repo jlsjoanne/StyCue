@@ -6,7 +6,7 @@ namespace Stycue.Api.DTOs.Images
     {
         /// <summary>
         /// 要上傳的圖片檔案
-        /// 必須使用 multipart/form-data 上傳。後端僅接受 image/* 類型檔案。
+        /// 必須使用 multipart/form-data 上傳。僅接受 image/* 類型檔案。
         /// </summary>
         public IFormFile File { get; set; } = null!;
 

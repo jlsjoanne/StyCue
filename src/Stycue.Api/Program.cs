@@ -47,6 +47,8 @@ namespace Stycue.Api
                 builder.Configuration.GetSection("GoogleAuth"));
             builder.Services.Configure<BlobStorageOptions>(
                 builder.Configuration.GetSection("BlobStorage"));
+            builder.Services.Configure<PointsOptions>(
+                builder.Configuration.GetSection("Points"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>

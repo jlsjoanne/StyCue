@@ -18,7 +18,7 @@ namespace Stycue.Api.DTOs.Images
 
         /// <summary>
         /// 圖片顯示用 URL
-        /// 此 URL 為短效 Read-only SAS URL，前端可直接用於 img src。SAS URL 不會存入資料庫，過期後需重新查詢 API 取得新 URL。
+        /// 此 URL 為短效 Read-only SAS URL，前端可直接用於 img src。過期後需重新查詢 API 取得新 URL。
         /// </summary>
         public string Url { get; set; } = String.Empty;
 
