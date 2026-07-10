@@ -6,6 +6,7 @@ using Stycue.Api.DTOs.Tags;
 using Stycue.Api.Entities;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Services.Models;
+using Stycue.Api.Enums;
 
 namespace Stycue.Api.Services
 {
@@ -19,9 +20,74 @@ namespace Stycue.Api.Services
         }
 
         public async Task<ApiResponse<List<TagResponse>>> GetTagsAsync(
-            int? userId, TagQueryRequest request, CancellationToken cancellationToken = default)
+            int? userId, TagQueryRequest? request, CancellationToken cancellationToken = default)
         {
+            var inputFilter = request ?? new TagQueryRequest();
 
+            if( !Enum.IsDefined(typeof(TagQuerySource), inputFilter.Source))
+            {
+                return ApiResponse<List<TagResponse>>.FailResult("不合法的標籤查詢來源", "INVALID_TAG_QUERY_SOURCE");
+            }
+
+            var limit = Math.Clamp(inputFilter.Limit, 1, 50);
+
+            var query = _dbContext.Tags.AsNoTracking();
+
+            if (inputFilter.TagCategory.HasValue)
+            {
+                query = query.Where(t => t.TagCategory == inputFilter.TagCategory.Value);
+            }
+
+            switch (inputFilter.Source)
+            {
+                case TagQuerySource.Search:
+                    var keyword = NormalizeKey(inputFilter.Keyword ?? string.Empty);
+                    if (string.IsNullOrWhiteSpace(keyword))
+                    {
+                        return ApiResponse<List<TagResponse>>.SuccessResult(new List<TagResponse>(), "標籤查詢成功");
+                    }
+
+                    var searchTags = await query.Where(t => t.NormalizedName.Contains(keyword))
+                        .OrderByDescending(t => t.CreatedAt)
+                        .Take(limit).ToListAsync(cancellationToken);
+
+                    var searchResponse = searchTags.Select(t => MapToResponse(t)).ToList();
+
+                    return ApiResponse<List<TagResponse>>.SuccessResult(searchResponse, "標籤查詢成功");
+                case TagQuerySource.Popular:
+                    var populaTags = await query.Select(t => new
+                    {
+                        Tag = t,
+                        UsageCount = t.PostTags.Count + t.CommissionTags.Count
+                    }).Where(t => t.UsageCount > 0)
+                    .OrderByDescending(t => t.UsageCount)
+                    .ThenBy(x => x.Tag.Name)
+                    .Take(limit).ToListAsync(cancellationToken);
+
+                    var popularResponse = populaTags.Select(t => MapToResponse(t.Tag, t.UsageCount)).ToList();
+                    return ApiResponse<List<TagResponse>>.SuccessResult(popularResponse, "標籤查詢成功");
+                case TagQuerySource.MyFrequent:
+                    if(userId == null)
+                    {
+                        return ApiResponse<List<TagResponse>>.FailResult("請先登入", "LOGIN_REQUIRED");
+                    }
+
+                    var myTags = await query.Select(t => new
+                    {
+                        Tag = t,
+                        UsageCount = t.PostTags.Count(pt => pt.Post.UserId == userId.Value) + t.CommissionTags.Count(ct => ct.Commission.UserId == userId.Value)
+                    })
+                        .Where(t => t.UsageCount > 0)
+                        .OrderByDescending(t => t.UsageCount)
+                        .ThenBy(t => t.Tag.Name)
+                        .Take(limit)
+                        .ToListAsync(cancellationToken);
+
+                    var myResponse = myTags.Select(t => MapToResponse(t.Tag, t.UsageCount)).ToList();
+                    return ApiResponse<List<TagResponse>>.SuccessResult(myResponse, "標籤查詢成功");
+                default:
+                    return ApiResponse<List<TagResponse>>.FailResult("不合法的標籤查詢來源", "INVALID_TAG_QUERY_SOURCE");
+            }
         }
 
         public async Task<ApiResponse<List<TagResponse>>> CreateOrGetAsync(

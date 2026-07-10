@@ -39,7 +39,7 @@ namespace Stycue.Api.DTOs.Tags
         public TagQuerySource Source { get; set; } = TagQuerySource.Search;
 
         /// <summary>
-        /// 回傳標籤數量上限
+        /// 回傳標籤數量上限，數量限制在1~50間
         /// </summary>
         /// <remarks>
         /// 預設 20
