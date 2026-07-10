@@ -4,6 +4,9 @@ namespace Stycue.Api.Services.Interfaces
 {
     public interface IBlobStorageService
     {
+        // Check Blob Storage Connection
+        Task<bool> CheckConnectionAsync();
+        
         // 上傳檔案到 Blob
         Task<BlobUploadResult> UploadAsync(
             Stream fileStream, 

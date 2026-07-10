@@ -31,6 +31,7 @@ namespace Stycue.Api.Services
             }
 
             _containerClient = new BlobContainerClient(_options.ConnectionString, _options.ContainerName);
+
         }
 
         public async Task<BlobUploadResult> UploadAsync(
@@ -119,6 +120,20 @@ namespace Stycue.Api.Services
             return blobClient.GenerateSasUri(sasBuilder).ToString();
         }
 
+        public async Task<bool> CheckConnectionAsync()
+        {
+            if (String.IsNullOrWhiteSpace(_options.ConnectionString))
+            {
+                return false;
+            }
+            if (String.IsNullOrWhiteSpace(_options.ContainerName))
+            {
+                return false;
+            }
 
+            var containerClient = new BlobContainerClient(_options.ConnectionString, _options.ContainerName);
+
+            return await containerClient.ExistsAsync();
+        }
     }
 }

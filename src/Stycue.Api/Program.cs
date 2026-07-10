@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -20,9 +21,24 @@ namespace Stycue.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+            const long MaxRequestBodySize = 20 * 1024 * 1024;
 
+            // Kestrel request body limit
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.Limits.MaxRequestBodySize = MaxRequestBodySize;
+            });
+
+            // Add services to the container.
+            
+            // Add Controller
             builder.Services.AddControllers();
+
+            // Set Multipart form upload limit
+            builder.Services.Configure<FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = MaxRequestBodySize;
+            });
 
             // Add Options
             builder.Services.Configure<JwtOptions>(
@@ -141,8 +157,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
-
-            //待加 ImageService
+            builder.Services.AddScoped<IImageService, ImageService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
