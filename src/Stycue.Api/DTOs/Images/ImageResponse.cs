@@ -12,24 +12,18 @@ namespace Stycue.Api.DTOs.Images
 
         /// <summary>
         /// 圖片用途
-        /// </summary>
-        /// <remarks>
         /// 可能值包含 Profile、Post、Commission、Comment。
-        /// </remarks>
+        /// </summary>
         public string Purpose { get; set; } = String.Empty;
 
         /// <summary>
         /// 圖片顯示用 URL
-        /// </summary>
-        /// <remarks>
         /// 此 URL 為短效 Read-only SAS URL，前端可直接用於 img src。SAS URL 不會存入資料庫，過期後需重新查詢 API 取得新 URL。
-        /// </remarks>
+        /// </summary>
         public string Url { get; set; } = String.Empty;
 
         /// <summary>
         /// 圖片中的服飾分類
-        /// </summary>
-        /// <remarks>
         /// 未提供時不回傳此欄位。
         /// Tops 上衣 = 1
         /// Bottoms 下身 = 2
@@ -39,16 +33,14 @@ namespace Stycue.Api.DTOs.Images
         /// Outerwear 外套 = 6
         /// Dress 洋裝 = 7
         /// Other 其他 = 99
-        /// </remarks>
+        /// </summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ImageCategory? Category { get; set; }
 
         /// <summary>
         /// 圖片中的品牌名稱
+        /// 未提供時不回傳此欄位
         /// </summary>
-        /// <remarks>
-        /// 未提供時不回傳此欄位。
-        /// </remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Brand { get; set; }
     }

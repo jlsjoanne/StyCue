@@ -12,6 +12,7 @@ namespace Stycue.Api.DTOs.Comm
         /// Request是否成功
         /// </summary>
         public bool Success { get; set; }
+
         /// <summary>
         /// 回傳訊息
         /// </summary>

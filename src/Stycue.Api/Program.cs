@@ -158,6 +158,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
             builder.Services.AddScoped<IImageService, ImageService>();
+            builder.Services.AddScoped<ITagService, TagService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

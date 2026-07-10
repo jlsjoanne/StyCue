@@ -8,6 +8,7 @@ using Stycue.Api.DTOs.Images;
 
 namespace Stycue.Api.Controllers
 {
+    
     [Authorize]
     [Route("api/images")]
     [ApiController]

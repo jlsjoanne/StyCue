@@ -6,16 +6,12 @@ namespace Stycue.Api.DTOs.Tags
     {
         /// <summary>
         /// 標籤搜尋關鍵字
-        /// </summary>
-        /// <remarks>
         /// 選填。提供時會依標籤名稱搜尋；未提供時依 Source 回傳熱門或常用標籤。
-        /// </remarks>
+        /// </summary>
         public string? Keyword { get; set; }
 
         /// <summary>
         /// 標籤分類篩選
-        /// </summary>
-        /// <remarks>
         /// 選填。提供時只回傳指定分類的標籤。
         /// 
         /// 可用值：
@@ -24,26 +20,22 @@ namespace Stycue.Api.DTOs.Tags
         /// 3 = Season，季節
         /// 4 = Color，配色
         /// 5 = Fit，版型
-        /// </remarks>
+        /// </summary>
         public TagCategory? TagCategory { get; set; }
 
         /// <summary>
         /// 標籤查詢來源
-        /// </summary>
-        /// <remarks>
         /// 可用值：
         /// 1 = Search，依關鍵字搜尋
         /// 2 = Popular，熱門標籤
         /// 3 = MyFrequent，目前登入使用者常用標籤
-        /// </remarks>
+        /// </summary>
         public TagQuerySource Source { get; set; } = TagQuerySource.Search;
 
         /// <summary>
         /// 回傳標籤數量上限，數量限制在1~50間
-        /// </summary>
-        /// <remarks>
         /// 預設 20
-        /// </remarks>
+        /// </summary>
         public int Limit { get; set; } = 20;
     }
 }

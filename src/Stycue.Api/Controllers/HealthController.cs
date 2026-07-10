@@ -6,7 +6,7 @@ using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/health")]
     [ApiController]
     public class HealthController : ControllerBase
     {

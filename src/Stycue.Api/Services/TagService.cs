@@ -29,6 +29,11 @@ namespace Stycue.Api.Services
                 return ApiResponse<List<TagResponse>>.FailResult("不合法的標籤查詢來源", "INVALID_TAG_QUERY_SOURCE");
             }
 
+            if(!IsValidTagCategory(inputFilter.TagCategory))
+            {
+                return ApiResponse<List<TagResponse>>.FailResult("不合法的標籤分類", "INVALID_TAG_CATEGORY");
+            }
+
             var limit = Math.Clamp(inputFilter.Limit, 1, 50);
 
             var query = _dbContext.Tags.AsNoTracking();
@@ -102,6 +107,11 @@ namespace Stycue.Api.Services
 
             foreach(var item in request.Tags)
             {
+                if(!IsValidTagCategory(item.TagCategory))
+                {
+                    return ApiResponse<List<TagResponse>>.FailResult("不合法的標籤分類", "INVALID_TAG_CATEGORY");
+                }
+                
                 var originalName = item.Name;
                 var displayName = NormalizeDisplayName(originalName);
 
@@ -228,6 +238,11 @@ namespace Stycue.Api.Services
                 TagCategory = tag.TagCategory,
                 UsageCount = usageCount
             };
+        }
+
+        private static bool IsValidTagCategory(TagCategory? tagCategory)
+        {
+            return !tagCategory.HasValue || Enum.IsDefined(typeof(TagCategory), tagCategory.Value);
         }
     }
 }

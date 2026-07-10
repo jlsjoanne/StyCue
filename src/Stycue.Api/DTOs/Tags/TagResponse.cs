@@ -17,25 +17,20 @@ namespace Stycue.Api.DTOs.Tags
 
         /// <summary>
         /// 標籤分類
-        /// </summary>
-        /// <remarks>
         /// 未分類標籤不回傳此欄位。
-        /// 
         /// 1 = Occasion，場合
         /// 2 = Style，風格
         /// 3 = Season，季節
         /// 4 = Color，配色
         /// 5 = Fit，版型
-        /// </remarks>
+        /// </summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TagCategory? TagCategory { get; set; }
 
         /// <summary>
         /// 標籤使用次數
-        /// </summary>
-        /// <remarks>
         /// 熱門標籤或常用標籤查詢時回傳；一般建立或搜尋結果可不回傳。
-        /// </remarks>
+        /// </summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? UsageCount { get; set; }
     }

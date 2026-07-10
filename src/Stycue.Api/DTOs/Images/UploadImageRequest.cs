@@ -6,24 +6,28 @@ namespace Stycue.Api.DTOs.Images
     {
         /// <summary>
         /// 要上傳的圖片檔案
-        /// </summary>
-        /// <remarks>
         /// 必須使用 multipart/form-data 上傳。後端僅接受 image/* 類型檔案。
-        /// </remarks>
+        /// </summary>
         public IFormFile File { get; set; } = null!;
+
         /// <summary>
         /// 圖片中的服飾分類
-        /// </summary>
-        /// <remarks>
         /// 選填。若前端有提供，後端會建立 ImageFashionMetadata。
-        /// </remarks>
+        /// Tops 上衣 = 1
+        /// Bottoms 下身 = 2
+        /// Shoes 鞋子 = 3
+        /// Accessories 配件 = 4
+        /// Bags 包包 = 5
+        /// Outerwear 外套 = 6
+        /// Dress 洋裝 = 7
+        /// Other 其他 = 99
+        /// </summary>
         public ImageCategory? Category { get; set; }
+
         /// <summary>
         /// 圖片中的品牌名稱
-        /// </summary>
-        /// <remarks>
         /// 選填。若前端有提供，後端會建立 ImageFashionMetadata。
-        /// </remarks>
+        /// </summary>
         public string? Brand { get; set; }
     }
 }
