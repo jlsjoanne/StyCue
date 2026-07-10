@@ -31,6 +31,14 @@ namespace Stycue.Api.DTOs.Images
         /// </summary>
         /// <remarks>
         /// 未提供時不回傳此欄位。
+        /// Tops 上衣 = 1
+        /// Bottoms 下身 = 2
+        /// Shoes 鞋子 = 3
+        /// Accessories 配件 = 4
+        /// Bags 包包 = 5
+        /// Outerwear 外套 = 6
+        /// Dress 洋裝 = 7
+        /// Other 其他 = 99
         /// </remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ImageCategory? Category { get; set; }
