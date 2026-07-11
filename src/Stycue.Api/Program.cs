@@ -163,6 +163,9 @@ namespace Stycue.Api
             builder.Services.AddScoped<IImageService, ImageService>();
             builder.Services.AddScoped<ITagService, TagService>();
             builder.Services.AddScoped<IPointService, PointService>();
+            builder.Services.AddScoped<IImageResponseBuilder, ImageResponseBuilder>();
+            builder.Services.AddScoped<ICommissionService, CommissionService>();
+            builder.Services.AddScoped<IUserSummaryResponseBuilder, UserSummaryResponseBuilder>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

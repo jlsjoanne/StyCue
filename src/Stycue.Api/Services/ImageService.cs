@@ -76,6 +76,71 @@ namespace Stycue.Api.Services
             return ApiResponse<object>.SuccessResult(null!, "圖片刪除成功");
         }
 
+        public async Task<ApiResponse<List<ImageAsset>>> ValidateBindableImagesAsync(
+            int userId, IEnumerable<int> imageIds, ImagePurpose purpose, CancellationToken cancellationToken = default)
+        {
+            if( userId <= 0)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if( !Enum.IsDefined(typeof(ImagePurpose), purpose))
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult("不合法的圖片用途", "INVALID_IMAGE_PURPOSE");
+            }
+
+            var distinctImageIds = imageIds?.Distinct().ToList() ?? new List<int>();
+
+            if(!distinctImageIds.Any())
+            {
+                return ApiResponse<List<ImageAsset>>.SuccessResult(new List<ImageAsset>(), "圖片驗證成功");
+            }
+
+            if(distinctImageIds.Any(id => id <= 0))
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult("包含不合法的圖片 ID", "INVALID_IMAGE_IDS");
+            }
+
+            var images = await _dbContext.ImageAssets.Where(image => distinctImageIds.Contains(image.Id))
+                .ToListAsync(cancellationToken);
+
+            if(images.Count != distinctImageIds.Count)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult("包含不存在的圖片 ID", "IMAGE_NOT_FOUND");
+            }
+
+            foreach(var image in images)
+            {
+                if(image.OwnerUserId != userId)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult("沒有權限使用部分圖片", "INVALID_IMAGE_PURPOSE");
+                }
+
+                if(image.Purpose != purpose)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult("圖片用途不符合", "INVALID_IMAGE_PURPOSE");
+                }
+
+                if( image.DeletedAt != null)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult("包含已刪除的圖片", "IMAGE_DELETED");
+                }
+
+                var alreadyBound = image.PostId != null ||
+                    image.CommissionId != null ||
+                    image.CommissionRepostId != null ||
+                    image.CommentId != null;
+
+                if (alreadyBound)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult("包含已被使用的圖片", "IMAGE_ALREADY_BOUND");
+                }
+            }
+
+            return ApiResponse<List<ImageAsset>>.SuccessResult(images, "圖片驗證成功");
+        }
+
+        // private method
         // 共用圖片上傳方法
         private async Task<ApiResponse<ImageResponse>> UploadAsync(
             int userId, UploadImageRequest request, ImagePurpose purpose, string folder, CancellationToken cancellationToken)
