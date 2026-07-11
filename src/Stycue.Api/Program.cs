@@ -12,6 +12,7 @@ using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Entities;
 using Stycue.Api.Middlewares;
 using Stycue.Api.DTOs.Comm;
+using Stycue.Api.Mappings;
 
 namespace Stycue.Api
 {
@@ -147,7 +148,7 @@ namespace Stycue.Api
             builder.Services.AddAuthorization();
 
             // AutoMapper
-
+            builder.Services.AddAutoMapper(cfg => { }, typeof(MappingAssemblyMarker));
 
             // Application Services
 
@@ -161,6 +162,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
             builder.Services.AddScoped<IImageService, ImageService>();
             builder.Services.AddScoped<ITagService, TagService>();
+            builder.Services.AddScoped<IPointService, PointService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

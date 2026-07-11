@@ -10,6 +10,9 @@ namespace Stycue.Api.Entities
         public int Amount { get; set; }
         public PointTransactionType TransactionType { get; set; }
         public PointReferenceType ReferenceType { get; set; }
+
+        // 這筆積分紀錄關聯到哪一筆業務資料」的 ID
+        // 要搭配 ReferenceType 一起看，不能單獨理解
         public int? ReferenceId { get; set; }
         public string Description { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

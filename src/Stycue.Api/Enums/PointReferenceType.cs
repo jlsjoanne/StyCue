@@ -5,6 +5,7 @@
         None = 0,
         Commission = 1,
         Comment = 2,
-        DailyClaim = 3
+        DailyClaim = 3,
+        Registration = 4
     }
 }

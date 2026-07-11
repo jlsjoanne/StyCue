@@ -3,10 +3,17 @@ using Stycue.Api.Enums;
 
 namespace Stycue.Api.DTOs.Images
 {
+    /// <summary>
+    /// 圖片回傳資料
+    /// 圖片Id, 圖片用途 {Profile、Post、Commission、Comment}
+    /// 圖片顯示用 URL
+    /// 服飾分類 {Tops上衣 = 1; Bottoms下身 = 2; Shoes 鞋子 = 3; Accessories 配件 = 4; Bags 包包 = 5; Outerwear 外套 = 6; Dress 洋裝 = 7; Other 其他 = 99}
+    /// 圖片中的品牌名稱
+    /// </summary>
     public class ImageResponse
     {
         /// <summary>
-        /// 圖片資料 ID
+        /// 圖片資料 Id
         /// </summary>
         public int ImageId { get; set; }
 

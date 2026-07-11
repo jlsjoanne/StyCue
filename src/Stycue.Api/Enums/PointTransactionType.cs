@@ -2,12 +2,13 @@
 {
     public enum PointTransactionType
     {
-        DailyReward = 1,
-        CommissionCreate = 2,
-        CommissionBoost = 3,
-        CommissionBestCommentReward = 4,
-        CommissionAutoReward = 5,
-        CommissionRefund = 6,
-        CommissionFee = 7
+        RegistrationReward = 1,
+        DailyReward = 2,
+        CommissionCreate = 3,
+        CommissionBoost = 4,
+        CommissionBestCommentReward = 5,
+        CommissionAutoReward = 6,
+        CommissionRefund = 7,
+        CommissionFee = 8
     }
 }

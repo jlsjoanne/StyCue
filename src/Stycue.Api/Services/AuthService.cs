@@ -16,13 +16,15 @@ namespace Stycue.Api.Services
         private readonly IPasswordService _passwordService;
         private readonly IJwtTokenService _jwtTokenService;
         private readonly IGoogleAuthService _googleAuthService;
+        private readonly IPointService _pointService;
 
-        public AuthService(AppDbContext appDbContext, IPasswordService passwordService, IJwtTokenService jwtTokenService, IGoogleAuthService googleAuthService)
+        public AuthService(AppDbContext appDbContext, IPasswordService passwordService, IJwtTokenService jwtTokenService, IGoogleAuthService googleAuthService, IPointService pointService)
         {
             _dbContext = appDbContext;
             _passwordService = passwordService;
             _jwtTokenService = jwtTokenService;
             _googleAuthService = googleAuthService;
+            _pointService = pointService;
         }
 
         public async Task<ApiResponse<RegisterResponse>> RegisterAsync(RegisterRequest request)
@@ -66,6 +68,8 @@ namespace Stycue.Api.Services
             // 寫入資料庫
             await _dbContext.SaveChangesAsync();
 
+            await _pointService.GrantRegistrationRewardAsync(user.Id);
+
             // 回傳 RegisterResponse
             var response = new RegisterResponse
             {
@@ -87,7 +91,7 @@ namespace Stycue.Api.Services
             }
 
             // 查詢User
-            var normalizedEmail = request.Email.Trim().ToUpperInvariant();
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
             var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
             // 用Email查使用者是否已註冊
             if(user == null)
@@ -190,6 +194,8 @@ namespace Stycue.Api.Services
 
                 _dbContext.Users.Add(user);
                 await _dbContext.SaveChangesAsync();
+
+                await _pointService.GrantRegistrationRewardAsync(user.Id);
             }
 
             // create JwtPayload
