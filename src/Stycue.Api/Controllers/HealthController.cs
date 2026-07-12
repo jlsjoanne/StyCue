@@ -6,6 +6,9 @@ using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Controllers
 {
+    /// <summary>
+    /// Web API專案相關檢查
+    /// </summary>
     [Route("api/health")]
     [ApiController]
     public class HealthController : ControllerBase

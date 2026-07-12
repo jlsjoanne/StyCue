@@ -24,7 +24,7 @@ namespace Stycue.Api.Services.Interfaces
             CancellationToken cancellationToken = default);
 
         // 到期後補充內容並重新開啟委託
-        Task<ApiResponse<RepostCommissionResponse>> RepostAsync(
+        Task<ApiResponse<CommissionDetailResponse>> RepostAsync(
             int userId,
             int commissionId,
             RepostCommissionRequest request,
@@ -45,9 +45,9 @@ namespace Stycue.Api.Services.Interfaces
             CancellationToken cancellationToken = default);
 
         // 委託文到期後結算獎勵
-        Task<ApiResponse<SettleRewardResponse>> SettleRewardAsync(
-            int userId,
-            int commissionId,
-            CancellationToken cancellationToken = default);
+        //Task<ApiResponse<SettleRewardResponse>> SettleRewardAsync(
+        //    int userId,
+        //    int commissionId,
+        //    CancellationToken cancellationToken = default);
     }
 }

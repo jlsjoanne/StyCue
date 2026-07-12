@@ -8,6 +8,9 @@ using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Controllers
 {
+    /// <summary>
+    /// 標籤API
+    /// </summary>
     [Route("api/tags")]
     [ApiController]
     public class TagController : ControllerBase
@@ -66,17 +69,24 @@ namespace Stycue.Api.Controllers
         /// <response code="200">標籤建立或取得成功。</response>
         /// <response code="400">未提供標籤、標籤名稱空白，或標籤分類不合法。</response>
         /// <response code="401">未登入或登入資訊無效。</response>
+        /// <response code="409">同名標籤已存在於不同分類。</response>
         [Authorize]
         [HttpPost]
         [ProducesResponseType(typeof(ApiResponse<List<TagResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<List<TagResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<List<TagResponse>>), StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateOrGetTags(CreateTagRequest request, CancellationToken cancellationToken)
         {
             var result = await _tagService.CreateOrGetAsync(request, cancellationToken);
 
             if(!result.Success)
             {
+                if( result.ErrorCode == "TAG_CATEGORY_CONFLICT")
+                {
+                    return Conflict(result);
+                }
+
                 return BadRequest(result);
             }
 

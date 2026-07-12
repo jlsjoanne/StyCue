@@ -13,6 +13,9 @@ using Stycue.Api.Entities;
 using Stycue.Api.Middlewares;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.Mappings;
+using System.Runtime.Versioning;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Stycue.Api
 {
@@ -21,6 +24,11 @@ namespace Stycue.Api
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            if(OperatingSystem.IsWindows())
+            {
+                AddWindowsEventLog(builder);
+            }
 
             const long MaxRequestBodySize = 20 * 1024 * 1024;
 
@@ -33,7 +41,14 @@ namespace Stycue.Api
             // Add services to the container.
             
             // Add Controller
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                    options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+                    options.JsonSerializerOptions.Converters.Add(
+                        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                });
 
             // Set Multipart form upload limit
             builder.Services.Configure<FormOptions>(options =>
@@ -233,6 +248,15 @@ namespace Stycue.Api
             app.MapControllers();
 
             app.Run();
+        }
+
+        [SupportedOSPlatform("windows")]
+        private static void AddWindowsEventLog(WebApplicationBuilder builder)
+        {
+            builder.Logging.AddEventLog(options =>
+            {
+                options.SourceName = "Stycue.Api";
+            });
         }
     }
 }

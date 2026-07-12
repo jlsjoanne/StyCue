@@ -21,5 +21,15 @@ namespace Stycue.Api.DTOs.Commissions
         /// 委託文關閉時間
         /// </summary>
         public DateTime ClosedAt { get; set; }
+
+        /// <summary>
+        /// 提前關閉退回積分，無條件進位
+        /// </summary>
+        public int RefundedPoints { get; set; }
+        
+        /// <summary>
+        /// 提前關閉手續積分
+        /// </summary>
+        public int FeePoints { get; set; }
     }
 }

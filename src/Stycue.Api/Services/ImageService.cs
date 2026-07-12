@@ -113,7 +113,7 @@ namespace Stycue.Api.Services
             {
                 if(image.OwnerUserId != userId)
                 {
-                    return ApiResponse<List<ImageAsset>>.FailResult("沒有權限使用部分圖片", "INVALID_IMAGE_PURPOSE");
+                    return ApiResponse<List<ImageAsset>>.FailResult("沒有權限使用部分圖片", "IMAGE_NOT_OWNER");
                 }
 
                 if(image.Purpose != purpose)
@@ -212,7 +212,7 @@ namespace Stycue.Api.Services
             return ApiResponse<ImageResponse>.SuccessResult(new ImageResponse
             {
                 ImageId = image.Id,
-                Purpose = image.Purpose.ToString(),
+                Purpose = image.Purpose,
                 Url = sasUrl,
                 Category = image.FashionMetadata?.Category,
                 Brand = image.FashionMetadata?.Brand

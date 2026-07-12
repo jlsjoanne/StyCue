@@ -47,12 +47,16 @@ namespace Stycue.Api.Services
             {
                 case TagQuerySource.Search:
                     var keyword = NormalizeKey(inputFilter.Keyword ?? string.Empty);
-                    if (string.IsNullOrWhiteSpace(keyword))
+                    if(!string.IsNullOrWhiteSpace(keyword))
+                    {
+                        query = query.Where(t => t.NormalizedName.Contains(keyword));
+                    }
+                    if (string.IsNullOrWhiteSpace(keyword) && !inputFilter.TagCategory.HasValue)
                     {
                         return ApiResponse<List<TagResponse>>.SuccessResult(new List<TagResponse>(), "標籤查詢成功");
                     }
 
-                    var searchTags = await query.Where(t => t.NormalizedName.Contains(keyword))
+                    var searchTags = await query
                         .OrderByDescending(t => t.CreatedAt)
                         .Take(limit).ToListAsync(cancellationToken);
 
@@ -122,10 +126,27 @@ namespace Stycue.Api.Services
 
                 var normalizedName = displayName.ToLowerInvariant();
 
-                var alreadyExistsInRequest = pendingTags.Any(t => t.NormalizedName == normalizedName);
+                var alreadyExistsInRequest = pendingTags.FirstOrDefault(t => t.NormalizedName == normalizedName);
 
-                if (alreadyExistsInRequest)
+                if (alreadyExistsInRequest != null)
                 {
+                    var existingCategory = alreadyExistsInRequest.TagCategory;
+                    var requestedCategory = item.TagCategory;
+
+                    if(existingCategory.HasValue &&
+                        requestedCategory.HasValue &&
+                        existingCategory.Value != requestedCategory.Value)
+                    {
+                        return ApiResponse<List<TagResponse>>.FailResult(
+                            $"標籤「{displayName}」在同一次請求中指定了不同分類",
+                            "TAG_CATEGORY_CONFLICT");
+                    }
+
+                    if( !existingCategory.HasValue && requestedCategory.HasValue)
+                    {
+                        alreadyExistsInRequest.TagCategory = requestedCategory;
+                    }
+
                     continue;
                 }
 
@@ -146,6 +167,39 @@ namespace Stycue.Api.Services
             var existingTags = await _dbContext.Tags
                 .Where(t => normalizedNames.Contains(t.NormalizedName)).ToListAsync(cancellationToken);
 
+            // 新增分類衝突與補分類邏輯
+            foreach(var pendingTag in pendingTags)
+            {
+                var existingTag = existingTags.FirstOrDefault(t => t.NormalizedName == pendingTag.NormalizedName);
+
+                if(existingTag == null)
+                {
+                    continue;
+                }
+
+                // 同名 + 既有分類為 null，但 request 帶分類：將原 tag 加分類
+                if( !existingTag.TagCategory.HasValue && pendingTag.TagCategory.HasValue)
+                {
+                    existingTag.TagCategory = pendingTag.TagCategory;
+                    continue;
+                }
+
+                // 同名 + 既有有分類，但 request 不帶分類：回既有 tag
+                if( existingTag.TagCategory.HasValue && !pendingTag.TagCategory.HasValue)
+                {
+                    continue;
+                }
+
+                // 同名 + 不同分類：回 409
+                if(existingTag.TagCategory.HasValue && pendingTag.TagCategory.HasValue &&
+                    existingTag.TagCategory.Value != pendingTag.TagCategory.Value)
+                {
+                    return ApiResponse<List<TagResponse>>.FailResult(
+                        $"標籤「{pendingTag.DisplayName}」已存在於其他分類，不能以不同分類重複建立",
+                        "TAG_CATEGORY_CONFLICT");
+                }
+            }
+
             // get existing name for filter them out from pending tags
             var existingNames = existingTags.Select(t => t.NormalizedName).ToHashSet();
 
@@ -162,9 +216,13 @@ namespace Stycue.Api.Services
             if (newTags.Any())
             {
                 _dbContext.Tags.AddRange(newTags);
-                await _dbContext.SaveChangesAsync(cancellationToken);
             }
 
+            if (newTags.Any() || existingTags.Any(t => _dbContext.Entry(t).Property(x => x.TagCategory).IsModified))
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            
             var tagsByNormalizedName = existingTags
                 .Concat(newTags).ToDictionary(x => x.NormalizedName);
 
@@ -176,34 +234,59 @@ namespace Stycue.Api.Services
             return ApiResponse<List<TagResponse>>.SuccessResult(response, "標籤建立或取得成功");
         }
 
-        public async Task<List<Tag>> ValidateTagIdsAsync(
+        public async Task<TagValidationResult> ValidateTagIdsAsync(
             IEnumerable<int> tagIds, CancellationToken cancellationToken = default)
         {
-            if( tagIds == null)
+            if (tagIds == null)
             {
-                return new List<Tag>();
+                return new TagValidationResult
+                {
+                    Success = true,
+                    Tags = new List<Tag>()
+                };
             }
 
-            if( tagIds.Any(t => t <= 0))
+
+            if (tagIds.Any(t => t <= 0))
             {
-                throw new InvalidOperationException("包含不合法的標籤 ID");
+                return new TagValidationResult
+                {
+                    Success = false,
+                    Message = "包含不合法的標籤 ID",
+                    ErrorCode = "INVALID_TAG_IDS"
+                };
             }
 
             var distinctTagIds = tagIds.Distinct().ToList();
 
-            if( ! distinctTagIds.Any())
+            if (!distinctTagIds.Any())
             {
-                return new List<Tag>();
+                return new TagValidationResult
+                {
+                    Success = true,
+                    Tags = new List<Tag>()
+                };
             }
 
-            var searchedTagIds = await _dbContext.Tags.Where(t => distinctTagIds.Contains(t.Id)).ToListAsync(cancellationToken);
+            var tags = await _dbContext.Tags
+                .Where(t => distinctTagIds.Contains(t.Id))
+                .ToListAsync(cancellationToken);
 
-            if(distinctTagIds.Count != searchedTagIds.Count)
+            if(tags.Count != distinctTagIds.Count)
             {
-                throw new InvalidOperationException("包含不合法的標籤 ID");
+                return new TagValidationResult
+                {
+                    Success = false,
+                    Message = "包含不存在的標籤 ID",
+                    ErrorCode = "INVALID_TAG_IDS"
+                };
             }
 
-            return searchedTagIds;
+            return new TagValidationResult
+            {
+                Success = true,
+                Tags = tags
+            };
 
         }
 

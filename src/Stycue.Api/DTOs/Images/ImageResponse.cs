@@ -21,7 +21,7 @@ namespace Stycue.Api.DTOs.Images
         /// 圖片用途
         /// 可能值包含 Profile、Post、Commission、Comment。
         /// </summary>
-        public string Purpose { get; set; } = String.Empty;
+        public ImagePurpose Purpose { get; set; }
 
         /// <summary>
         /// 圖片顯示用 URL

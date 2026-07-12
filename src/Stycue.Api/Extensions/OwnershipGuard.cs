@@ -10,14 +10,14 @@ namespace Stycue.Api.Extensions
         }
 
         public static ApiResponse<T>? EnsureOwner<T>(
-            int ownerUserId, int currentUserId, string resourceName = "資源")
+            int ownerUserId, int currentUserId, string message = "沒有權限操作", string errorCode = "FORBIDDEN")
         {
             if(ownerUserId == currentUserId)
             {
                 return null;
             }
 
-            return ApiResponse<T>.FailResult($"沒有權限操作此{resourceName}", "FORBIDDEN");
+            return ApiResponse<T>.FailResult(message,errorCode);
         }
     }
 }

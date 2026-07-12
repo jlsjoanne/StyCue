@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Stycue.Api.Enums;
 using Stycue.Api.DTOs.Images;
 using Stycue.Api.DTOs.Tags;
+using Stycue.Api.DTOs.Points;
 
 namespace Stycue.Api.Services
 {
@@ -24,14 +25,13 @@ namespace Stycue.Api.Services
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
         private readonly IOptions<PointsOptions> _pointOptions;
-
-        
+        private readonly ILogger<CommissionService> _logger;
 
         public CommissionService(
             AppDbContext dbContext, ITagService tagService, IPointService pointService, 
             IImageService imageService, IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder,
-            IMapper mapper, IOptions<PointsOptions> pointoptions)
+            IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -41,10 +41,711 @@ namespace Stycue.Api.Services
             _userSummaryResponseBuilder = userSummaryResponseBuilder;
             _mapper = mapper;
             _pointOptions = pointoptions;
+            _logger = logger;
         }
 
         // Interface Public Methods
+        // 取得委託文詳細內容
+        public async Task<ApiResponse<CommissionDetailResponse>> GetCommissionAsync(
+              int? userId,
+              int commissionId,
+              CancellationToken cancellationToken = default)
+        {
+            if( commissionId <= 0)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("不合法的委託文 ID", "INVALID_COMMISSION_ID");
+            }
 
+            var commission = await FindCommissionForDetailAsync(commissionId, cancellationToken);
+
+            if( commission == null)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("找不到指定的委託文", "COMMISSION_NOT_FOUND");
+            }
+
+            var response = BuildCommissionDetailResponse(commission, userId);
+
+            return ApiResponse<CommissionDetailResponse>.SuccessResult(response);
+        }
+
+        // 建立委託
+        public async Task<ApiResponse<CommissionDetailResponse>> CreateAsync(
+            int userId,
+            CreateCommissionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if(request == null)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("建立委託資料不可為空", "INVALID_REQUEST");
+            }
+
+            if(userId <= 0)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            var title = request.Title?.Trim() ?? string.Empty;
+            var content = request.Content?.Trim() ?? string.Empty;
+            var budget = request.Budget?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("委託標題不可為空", "COMMISSION_TITLE_REQUIRED");
+            }
+
+            if(title.Length > 100)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("委託標題不可超過 100 個字", "COMMISSION_TITLE_TOO_LONG");
+            }
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("委託內容不可為空", "COMMISSION_CONTENT_REQUIRED");
+            }
+
+            if(content.Length > 4000)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("委託內容不可超過 4000 個字", "COMMISSION_CONTENT_TOO_LONG");
+            }
+
+            if(request.Height < 1 || request.Height > 300)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("身高需介於 1 到 300 公分", "INVALID_HEIGHT");
+            }
+
+            if(request.Weight < 1 || request.Weight > 500)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("體重需介於 1 到 500 公斤", "INVALID_WEIGHT");
+            }
+
+            if(request.Age < 1 || request.Age > 120)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("年齡需介於 1 到 120 歲", "INVALID_AGE");
+            }
+
+            if(budget.Length > 100)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("預算描述不可超過 100 個字", "COMMISSION_BUDGET_TOO_LONG");
+            }
+
+            if( request.Points < _pointOptions.Value.MinCommissionPoints)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult(
+                    $"建立委託至少需要 {_pointOptions.Value.MinCommissionPoints} 積分",
+                    "COMMISSION_POINTS_TOO_LOW");
+            }
+
+            var imagesResult = await _imageService.ValidateBindableImagesAsync(
+                userId, request.ImageIds, ImagePurpose.Commission, cancellationToken);
+
+            if(!imagesResult.Success)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult(imagesResult.Message, imagesResult.ErrorCode);
+            }
+
+            var commissionImages = imagesResult.Data ?? [];
+
+            var commissionTags = await _tagService.ValidateTagIdsAsync(
+                request.TagIds, cancellationToken);
+
+            if(!commissionTags.Success)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult(commissionTags.Message, commissionTags.ErrorCode);
+            }
+
+            int commissionId = 0;
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                // get current time
+                var now = DateTime.UtcNow;
+
+                // create commission object
+                var commission = new Commission
+                {
+                    UserId = userId,
+                    Title = title,
+                    Content = content,
+                    Height = request.Height,
+                    Weight = request.Weight,
+                    Age = request.Age,
+                    Budget = budget,
+                    Points = request.Points,
+                    Status = CommissionStatus.Open,
+                    RepostCount = 0,
+                    CreatedAt = now,
+                    ExpiredAt = now.AddDays(_pointOptions.Value.DefaultCommissionExpireDays)
+                };
+
+                _dbContext.Commissions.Add(commission);
+
+                // save to db to get commission id
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                // check wallet and make sure point is enough for commission
+                // if success => spend points
+                var spendResult = await _pointService.SpendPointsAsync(
+                    userId, commission.Points, PointTransactionType.CommissionCreate,
+                    PointReferenceType.Commission, commission.Id, $"建立委託文：{commission.Title}", cancellationToken);
+
+                if(!spendResult.Success)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+
+                    return ApiResponse<CommissionDetailResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
+                }
+
+                // bind images to commission
+                BindCommissionImages(commission.Id, commissionImages);
+
+                // bind tags to commission
+                BindCommissionTags(commission, commissionTags.Tags);
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                commissionId = commission.Id;
+
+            }
+            catch(Exception ex)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                catch(Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx,
+                        "Rollback create commission transaction failed. UserId: {UserId}",
+                        userId);
+                }
+                
+                _logger.LogError(ex, "Create commission failed. UserId: {UserId}", userId);
+
+                return ApiResponse<CommissionDetailResponse>.FailResult("建立委託文失敗，請稍後再試", "COMMISSION_CREATE_FAILED");
+            }
+
+            var detail = await FindCommissionForDetailAsync(commissionId, cancellationToken);
+
+            if (detail == null)
+            {
+                _logger.LogError(
+                    "Commission was created but detail query returned null. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CommissionDetailResponse>.FailResult("委託文建立成功，但讀取詳情失敗", "COMMISSION_DETAIL_NOT_FOUND_AFTER_CREATE");
+            }
+
+            var response = BuildCommissionDetailResponse(detail, userId);
+
+            return ApiResponse<CommissionDetailResponse>.SuccessResult(response, "委託文建立成功");
+        }
+
+        // 提前關閉委託
+        public async Task<ApiResponse<CloseCommissionResponse>> CloseAsync(
+            int userId,
+            int commissionId,
+            CancellationToken cancellationToken = default)
+        {
+            // check userId
+            if (userId <= 0)
+            {
+                return ApiResponse<CloseCommissionResponse>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            // check commission Id
+            if (commissionId <= 0)
+            {
+                return ApiResponse<CloseCommissionResponse>.FailResult("不合法的委託文 ID", "INVALID_COMMISSION_ID");
+            }
+
+            var refundPercent = _pointOptions.Value.RefundPercent;
+
+            if (refundPercent <= 0 || refundPercent > 100)
+            {
+                return ApiResponse<CloseCommissionResponse>.FailResult(
+                    "委託退點比例設定錯誤",
+                    "INVALID_REFUND_PERCENT");
+            }
+
+            if( _pointOptions.Value.EarlyCloseLimitHours <= 0)
+            {
+                return ApiResponse<CloseCommissionResponse>.FailResult(
+                    "提前關閉時間限制設定錯誤", "INVALID_EARLY_CLOSE_LIMIT_HOURS");
+            }
+
+            // start transaction 
+            // 確認委託可關閉 → 關閉委託→ 退還積分→ 建立 PointTransaction
+
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                // get commission
+                var commission = await _dbContext.Commissions.FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken);
+
+                if( commission == null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<CloseCommissionResponse>.FailResult(
+                        "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+                }
+
+                // validate commission ownership
+                var ownerError = OwnershipGuard.EnsureOwner<CloseCommissionResponse>(commission.UserId, userId,
+                    "只有委託建立者可以關閉委託", "COMMISSION_NOT_OWNER");
+
+                if(ownerError != null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ownerError;
+                }
+
+                // check Commission status
+                if (commission.Status == CommissionStatus.Closed ||
+                    commission.Status == CommissionStatus.Rewarded ||
+                    commission.Status == CommissionStatus.NoAward ||
+                    commission.ClosedAt != null ||
+                    commission.AwardedCommentId != null ||
+                    commission.AwardedAt != null ||
+                    commission.RewardSettledAt != null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<CloseCommissionResponse>.FailResult(
+                        "目前委託狀態無法關閉", "COMMISSION_CANNOT_CLOSE");
+                }
+
+                var now = DateTime.UtcNow;
+                var closeDeadline = commission.CreatedAt.AddHours(_pointOptions.Value.EarlyCloseLimitHours);
+
+                if (now > closeDeadline)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<CloseCommissionResponse>.FailResult(
+                        $"委託建立超過 {_pointOptions.Value.EarlyCloseLimitHours} 小時後不可提前關閉",
+                        "COMMISSION_CLOSE_WINDOW_EXPIRED");
+                }
+
+                var alreadyRefunded = await _dbContext.PointTransactions.AnyAsync(t =>
+                    t.TransactionType == PointTransactionType.CommissionRefund &&
+                    t.ReferenceType == PointReferenceType.Commission &&
+                    t.ReferenceId == commission.Id,
+                    cancellationToken);
+
+                if (alreadyRefunded)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<CloseCommissionResponse>.FailResult(
+                        "此委託已完成退點，無法重複關閉",
+                        "COMMISSION_ALREADY_REFUNDED");
+                }
+
+                var refundPoints = (int)Math.Ceiling(commission.Points * refundPercent / 100m);
+                var feePoints = commission.Points - refundPoints;
+
+                commission.Status = CommissionStatus.Closed;
+                commission.ClosedAt = now;
+                commission.UpdatedAt = now;
+                commission.RewardSettledAt = now;
+
+                var refundResult = await _pointService.AddPointsAsync(
+                    userId, refundPoints, PointTransactionType.CommissionRefund, PointReferenceType.Commission,
+                    commission.Id, $"提前關閉委託退還積分：{commission.Title}", cancellationToken);
+
+                if (!refundResult.Success)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+
+                    return ApiResponse<CloseCommissionResponse>.FailResult(
+                        refundResult.Message, refundResult.ErrorCode);
+                }
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                var response = new CloseCommissionResponse
+                {
+                    CommissionId = commission.Id,
+                    Status = commission.Status,
+                    ClosedAt = commission.ClosedAt.Value,
+                    RefundedPoints = refundPoints,
+                    FeePoints = feePoints
+                };
+
+                return ApiResponse<CloseCommissionResponse>.SuccessResult(response, "委託已關閉，積分已退還");
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx,
+                        "Rollback close commission transaction failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                        commissionId,
+                        userId);
+                }
+
+                _logger.LogError(ex,
+                    "Close commission failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CloseCommissionResponse>.FailResult("關閉委託失敗，請稍後再試",
+                    "COMMISSION_CLOSE_FAILED");
+            }
+        }
+
+
+        // 到期後補充內容並重新開啟委託
+        public async Task<ApiResponse<CommissionDetailResponse>> RepostAsync(
+            int userId,
+            int commissionId,
+            RepostCommissionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            // check userId
+            if( userId <= 0)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            // check commission Id
+            if (commissionId <= 0)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("不合法的委託文 ID", "INVALID_COMMISSION_ID");
+            }
+
+            // check request
+            if ( request == null)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("重新開啟委託資料不可為空",
+                    "INVALID_REQUEST");
+            }
+
+            // check supplement content
+            var supplementContent = request.SupplementContent?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(supplementContent))
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("補充內容不可為空",
+                    "COMMISSION_REPOST_CONTENT_REQUIRED");
+            }
+
+            if(supplementContent.Length > 4000)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("補充內容不可超過 4000 個字",
+                    "COMMISSION_REPOST_CONTENT_TOO_LONG");
+            }
+
+            if(request.AdditionalPoints < 0)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult("追加積分不可小於 0",
+                    "INVALID_ADDITIONAL_POINTS");
+            }
+
+            // check Images
+            var imageResult = await _imageService.ValidateBindableImagesAsync(userId,
+                request.ImageIds, ImagePurpose.Commission, cancellationToken);
+
+            if(!imageResult.Success)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult(imageResult.Message, imageResult.ErrorCode);
+            }
+
+            var repostImages = imageResult.Data ?? [];
+
+            // check tags
+            var repostTags = await _tagService.ValidateTagIdsAsync(request.TagIds, cancellationToken);
+
+            if(!repostTags.Success)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult(repostTags.Message, repostTags.ErrorCode);
+            }
+
+
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                // get commission
+                var commission = await FindCommissionForUpdateAsync(commissionId, cancellationToken);
+
+                if( commission == null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<CommissionDetailResponse>.FailResult("找不到指定的委託文",
+                        "COMMISSION_NOT_FOUND");
+                }
+
+                // check ownership
+                var ownerError = OwnershipGuard.EnsureOwner<CommissionDetailResponse>(commission.UserId, userId,
+                    "只有委託建立者可以重新開啟委託", "COMMISSION_NOT_OWNER");
+
+                if( ownerError != null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ownerError;
+                }
+
+                var now = DateTime.UtcNow;
+                var isExpired = IsExpired(commission, now);
+
+                var hasActiveComments = await _dbContext.Comments.AnyAsync(c =>
+                    c.CommissionId == commission.Id &&
+                    c.DeletedAt == null, cancellationToken);
+                var hasExistingRepost = commission.Reposts.Any();
+
+                if( !CanRepost(commission, isOwner: true, isExpired, hasActiveComments, hasExistingRepost))
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<CommissionDetailResponse>.FailResult(
+                        "目前委託狀態無法重新開啟", "COMMISSION_CANNOT_REPOST");
+                }
+
+                // if setting additional points
+                if( request.AdditionalPoints > 0)
+                {
+                    var spendResult = await _pointService.SpendPointsAsync(userId, request.AdditionalPoints,
+                        PointTransactionType.CommissionBoost, PointReferenceType.Commission,
+                        commission.Id, $"重新開啟委託加碼積分：{commission.Title}", cancellationToken);
+
+                    if(!spendResult.Success)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return ApiResponse<CommissionDetailResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
+                    }
+                }
+
+                // create commission repost object
+                var repost = new CommissionRepost
+                {
+                    CommissionId = commission.Id,
+                    UserId = userId,
+                    SupplementContent = supplementContent,
+                    AdditionalPoints = request.AdditionalPoints,
+                    CreatedAt = now
+                };
+
+                _dbContext.CommissionReposts.Add(repost);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                // bind Images
+                BindCommissionImages(commission.Id, repostImages, repost.Id);
+                BindCommissionTags(commission, repostTags.Tags);
+
+                // update commission
+                commission.Points += request.AdditionalPoints;
+                commission.RepostCount += 1;
+                commission.Status = CommissionStatus.Open;
+                commission.ExpiredAt = now.AddDays(_pointOptions.Value.DefaultCommissionExtendDays);
+                commission.UpdatedAt = now;
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+            }
+            catch(DbUpdateException dbex)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                catch(Exception rollbackex)
+                {
+                    _logger.LogError(rollbackex,
+                        "Rollback repost commission transaction failed after db update exception. CommissionId: {CommissionId}, UserId: {UserId}",
+                        commissionId, userId);
+                }
+
+                _logger.LogWarning(dbex,
+                    "Repost commission db update failed. Possible duplicate repost. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CommissionDetailResponse>.FailResult("此委託已重新開啟過，無法再次重新開啟",
+                    "COMMISSION_REPOST_LIMIT_REACHED");
+            }
+            catch(Exception ex)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                catch(Exception rollbackex)
+                {
+                    _logger.LogError(rollbackex,
+                        "Rollback repost commission transaction failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                        commissionId, userId);
+                }
+
+                _logger.LogError(ex,
+                    "Repost commission failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CommissionDetailResponse>.FailResult(
+                    "重新開啟委託失敗，請稍後再試", "COMMISSION_REPOST_FAILED");
+            }
+
+
+            var detail = await FindCommissionForDetailAsync(commissionId, cancellationToken);
+            if( detail == null)
+            {
+                _logger.LogError("Commission was reposted but detail query returned null. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CommissionDetailResponse>.FailResult("委託已重新開啟，但讀取詳情失敗",
+                    "COMMISSION_DETAIL_NOT_FOUND_AFTER_REPOST");
+            }
+
+            var response = BuildCommissionDetailResponse(detail, userId);
+
+            return ApiResponse<CommissionDetailResponse>.SuccessResult(response,
+                "委託已重新開啟");
+        }
+
+        // 加碼委託文積分並延長到期時間
+        public async Task<ApiResponse<BoostCommissionResponse>> BoostAsync(
+            int userId,
+            int commissionId,
+            BoostCommissionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            // check userId
+            if (userId <= 0)
+            {
+                return ApiResponse<BoostCommissionResponse>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            // check commission Id
+            if (commissionId <= 0)
+            {
+                return ApiResponse<BoostCommissionResponse>.FailResult("不合法的委託文 ID", "INVALID_COMMISSION_ID");
+            }
+
+            if( request == null)
+            {
+                return ApiResponse<BoostCommissionResponse>.FailResult(
+                    "加碼委託資料不可為空", "INVALID_REQUEST");
+            }
+
+            if(request.AdditionalPoints < _pointOptions.Value.MinCommissionBoostPoints)
+            {
+                return ApiResponse<BoostCommissionResponse>.FailResult(
+                    $"加碼積分至少需要 {_pointOptions.Value.MinCommissionBoostPoints} 積分",
+                    "COMMISSION_BOOST_POINTS_TOO_LOW");
+            }
+
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                // get commission
+                var commission = await _dbContext.Commissions
+                    .FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken);
+
+                // check if get commission
+                if( commission == null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<BoostCommissionResponse>.FailResult("找不到指定的委託文",
+                        "COMMISSION_NOT_FOUND");
+                }
+
+                // check if user is commission owner
+                var ownerError = OwnershipGuard.EnsureOwner<BoostCommissionResponse>(
+                    commission.UserId, userId, "只有委託建立者可以加碼委託", "COMMISSION_NOT_OWNER");
+
+                if(ownerError != null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ownerError;
+                }
+
+                // check if commission can be boosted
+                if( !CanBoost(commission, isOwner: true))
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<BoostCommissionResponse>.FailResult(
+                        "目前委託狀態無法加碼", "COMMISSION_CANNOT_BOOST");
+                }
+
+                // user spend additional point for boosting
+                var spendResult = await _pointService.SpendPointsAsync(userId, request.AdditionalPoints,
+                    PointTransactionType.CommissionBoost, PointReferenceType.Commission,
+                    commission.Id, $"委託加碼積分：{commission.Title}", cancellationToken);
+
+                if(!spendResult.Success)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return ApiResponse<BoostCommissionResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
+                }
+
+                var now = DateTime.UtcNow;
+
+                // update commission status
+                commission.Points += request.AdditionalPoints;
+                commission.Status = CommissionStatus.Open;
+                commission.ExpiredAt = now.AddDays(_pointOptions.Value.DefaultCommissionExtendDays);
+                commission.UpdatedAt = now;
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                var response = new BoostCommissionResponse
+                {
+                    CommissionId = commission.Id,
+                    Status = commission.Status,
+                    AddedPoints = request.AdditionalPoints,
+                    TotalPoints = commission.Points,
+                    ExpiredAt = commission.ExpiredAt,
+                    Wallet = spendResult.Data ?? new PointWalletResponse()
+                };
+
+                return ApiResponse<BoostCommissionResponse>.SuccessResult(response, "委託加碼成功");
+            }
+            catch(Exception ex)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                catch(Exception rollEx)
+                {
+                    _logger.LogError(rollEx,
+                        "Rollback boost commission transaction failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                        commissionId, userId);
+                }
+
+                _logger.LogError(ex,
+                    "Boost commission failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<BoostCommissionResponse>.FailResult("委託加碼失敗，請稍後再試", "COMMISSION_BOOST_FAILED");
+            }
+        }
+
+        // 委託者手動選擇最佳留言並發放積分
+        public async Task<ApiResponse<CommissionRewardResponse>> SelectBestCommentAsync(
+            int userId,
+            int commissionId,
+            SelectBestCommentRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            // placeholder
+            return ApiResponse<CommissionRewardResponse>.FailResult("place-holder", "place-holder");
+        }
+
+        // 委託文到期後結算獎勵
+        //public async Task<ApiResponse<SettleRewardResponse>> SettleRewardAsync(
+        //    int userId,
+        //    int commissionId,
+        //    CancellationToken cancellationToken = default)
+        //{
+        //    // placeholder
+        //    return ApiResponse<SettleRewardResponse>.FailResult("place-holder", "place-holder");
+        //}
 
         // private helper methods
 
@@ -55,12 +756,15 @@ namespace Stycue.Api.Services
         }
 
         // 委託文是否可以Repost
-        private static bool CanRepost(Commission commission, bool isOwner, bool isExpired)
+        private static bool CanRepost(Commission commission, bool isOwner, bool isExpired,
+            bool hasActiveComments, bool hasExistingReposts)
         {
-            return isOwner && isExpired &&
+            return isOwner && isExpired && !hasActiveComments && !hasExistingReposts &&
                 commission.Status != CommissionStatus.Closed &&
                 commission.Status != CommissionStatus.Rewarded &&
                 commission.Status != CommissionStatus.NoAward &&
+                commission.ClosedAt == null && commission.AwardedCommentId == null &&
+                commission.AwardedAt == null &&
                 commission.RepostCount == 0 &&
                 commission.RewardSettledAt == null;
         }
@@ -70,9 +774,12 @@ namespace Stycue.Api.Services
         private static bool CanBoost(Commission commission, bool isOwner)
         {
             return isOwner &&
-                (commission.Status == CommissionStatus.Open || commission.Status == CommissionStatus.Expired) &&
+                commission.Status != CommissionStatus.Rewarded &&
+                commission.Status != CommissionStatus.Closed &&
+                commission.Status != CommissionStatus.NoAward &&
                 commission.ClosedAt == null &&
                 commission.RewardSettledAt == null &&
+                commission.AwardedAt == null &&
                 commission.AwardedCommentId == null;
         }
 
@@ -93,7 +800,7 @@ namespace Stycue.Api.Services
         private async Task<Commission?> FindCommissionForDetailAsync(
             int commissionId, CancellationToken cancellationToken)
         {
-            return await _dbContext.Commissions.AsNoTracking()
+            return await _dbContext.Commissions.AsNoTracking().AsSplitQuery()
                 .Include(c => c.User).ThenInclude(u => u.AvatarImage)
                 .Include(c => c.Images).ThenInclude(i => i.FashionMetadata)
                 .Include(c => c.CommissionTags).ThenInclude(ct => ct.Tag)
@@ -116,58 +823,39 @@ namespace Stycue.Api.Services
                 .FirstOrDefaultAsync(c => c.Id == commissionId,cancellationToken);
         }
 
+
         // 綁定標籤
-        private async Task<ApiResponse<T>?> BindCommissionTagsAsync<T>(
-            Commission commission, IEnumerable<int> tagIds, CancellationToken cancellationToken)
+        private static void BindCommissionTags(
+            Commission commission, IEnumerable<Tag> tags)
         {
-            try
+            var existingTagIds = commission.CommissionTags.Select(x => x.TagId).ToHashSet();
+
+            foreach(var tag in tags)
             {
-                var tags = await _tagService.ValidateTagIdsAsync(tagIds, cancellationToken);
-
-                var existingTagIds = commission.CommissionTags
-                    .Select(x => x.TagId)
-                    .ToHashSet();
-
-                foreach(var tag in tags)
+                if (existingTagIds.Contains(tag.Id))
                 {
-                    if (existingTagIds.Contains(tag.Id))
-                    {
-                        continue;
-                    }
-                    commission.CommissionTags.Add(new CommissionTag
-                    {
-                        Commission = commission,
-                        TagId = tag.Id
-                    });
+                    continue;
                 }
 
-                return null;
-            }
-            catch(InvalidOperationException ex)
-            {
-                return ApiResponse<T>.FailResult(ex.Message, "INVALID_TAG_IDS");
+                commission.CommissionTags.Add(new CommissionTag
+                {
+                    Commission = commission,
+                    TagId = tag.Id
+                });
             }
         }
 
         // 綁定圖片
-        private async Task<ApiResponse<T>?> BindCommissionImagesAsync<T>(
-            int userId, IEnumerable<int> imageIds, Commission commission, CancellationToken cancellationToken)
+        private static void BindCommissionImages(
+            int commissionId, IEnumerable<ImageAsset> images, int? commissionRepostId = null)
         {
-            var imageResult = await _imageService.ValidateBindableImagesAsync(
-                userId, imageIds, ImagePurpose.Commission, cancellationToken);
-
-            if( !imageResult.Success || imageResult.Data == null)
+            foreach(var image in images)
             {
-                return ApiResponse<T>.FailResult(imageResult.Message, imageResult.ErrorCode);
+                image.CommissionId = commissionId;
+                image.CommissionRepostId = commissionRepostId;
             }
-
-            foreach(var image in imageResult.Data)
-            {
-                image.Commission = commission;
-            }
-
-            return null;
         }
+        
 
         // 建立Commission Response圖片
         private IReadOnlyList<ImageResponse> BuildOriginalCommissionImages(Commission commission)
@@ -202,13 +890,15 @@ namespace Stycue.Api.Services
             var isExpired = IsExpired(commission, now);
 
             var response = _mapper.Map<CommissionDetailResponse>(commission);
+            var hasActiveComments = commission.Comments.Any(c => c.DeletedAt == null);
+            var hasExistingReposts = commission.Reposts.Any();
 
             response.Author = _userSummaryResponseBuilder.Build(commission.User);
 
             response.IsOwner = isOwner;
             response.IsExpired = isExpired;
             response.CanBoost = CanBoost(commission, isOwner);
-            response.CanRepost = CanRepost(commission, isOwner, isExpired);
+            response.CanRepost = CanRepost(commission, isOwner, isExpired, hasActiveComments, hasExistingReposts);
             response.CanSelectBestComment = CanSelectBestComment(commission, isOwner);
 
             response.CommentCount = commission.Comments.Count(c => c.DeletedAt == null);

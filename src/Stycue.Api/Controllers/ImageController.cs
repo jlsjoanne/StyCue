@@ -8,7 +8,9 @@ using Stycue.Api.DTOs.Images;
 
 namespace Stycue.Api.Controllers
 {
-    
+    /// <summary>
+    /// 圖片上傳與刪除API
+    /// </summary>
     [Authorize]
     [Route("api/images")]
     [ApiController]

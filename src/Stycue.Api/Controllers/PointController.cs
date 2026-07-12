@@ -8,6 +8,9 @@ using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Controllers
 {
+    /// <summary>
+    /// 積分相關API
+    /// </summary>
     [Authorize]
     [Route("api/points")]
     [ApiController]
