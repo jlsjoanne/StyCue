@@ -287,7 +287,6 @@ namespace Stycue.Api.Services
 
                 if( commission == null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<CloseCommissionResponse>.FailResult(
                         "找不到指定的委託文", "COMMISSION_NOT_FOUND");
                 }
@@ -298,7 +297,6 @@ namespace Stycue.Api.Services
 
                 if(ownerError != null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ownerError;
                 }
 
@@ -311,7 +309,6 @@ namespace Stycue.Api.Services
                     commission.AwardedAt != null ||
                     commission.RewardSettledAt != null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<CloseCommissionResponse>.FailResult(
                         "目前委託狀態無法關閉", "COMMISSION_CANNOT_CLOSE");
                 }
@@ -321,7 +318,6 @@ namespace Stycue.Api.Services
 
                 if (now > closeDeadline)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<CloseCommissionResponse>.FailResult(
                         $"委託建立超過 {_pointOptions.Value.EarlyCloseLimitHours} 小時後不可提前關閉",
                         "COMMISSION_CLOSE_WINDOW_EXPIRED");
@@ -335,7 +331,6 @@ namespace Stycue.Api.Services
 
                 if (alreadyRefunded)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<CloseCommissionResponse>.FailResult(
                         "此委託已完成退點，無法重複關閉",
                         "COMMISSION_ALREADY_REFUNDED");
@@ -355,8 +350,6 @@ namespace Stycue.Api.Services
 
                 if (!refundResult.Success)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
-
                     return ApiResponse<CloseCommissionResponse>.FailResult(
                         refundResult.Message, refundResult.ErrorCode);
                 }
@@ -475,7 +468,6 @@ namespace Stycue.Api.Services
 
                 if( commission == null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<CommissionDetailResponse>.FailResult("找不到指定的委託文",
                         "COMMISSION_NOT_FOUND");
                 }
@@ -486,7 +478,6 @@ namespace Stycue.Api.Services
 
                 if( ownerError != null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ownerError;
                 }
 
@@ -500,7 +491,6 @@ namespace Stycue.Api.Services
 
                 if( !CanRepost(commission, isOwner: true, isExpired, hasActiveComments, hasExistingRepost))
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<CommissionDetailResponse>.FailResult(
                         "目前委託狀態無法重新開啟", "COMMISSION_CANNOT_REPOST");
                 }
@@ -514,7 +504,6 @@ namespace Stycue.Api.Services
 
                     if(!spendResult.Success)
                     {
-                        await transaction.RollbackAsync(cancellationToken);
                         return ApiResponse<CommissionDetailResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
                     }
                 }
@@ -648,7 +637,6 @@ namespace Stycue.Api.Services
                 // check if get commission
                 if( commission == null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<BoostCommissionResponse>.FailResult("找不到指定的委託文",
                         "COMMISSION_NOT_FOUND");
                 }
@@ -659,14 +647,12 @@ namespace Stycue.Api.Services
 
                 if(ownerError != null)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ownerError;
                 }
 
                 // check if commission can be boosted
                 if( !CanBoost(commission, isOwner: true))
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<BoostCommissionResponse>.FailResult(
                         "目前委託狀態無法加碼", "COMMISSION_CANNOT_BOOST");
                 }
@@ -678,7 +664,6 @@ namespace Stycue.Api.Services
 
                 if(!spendResult.Success)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
                     return ApiResponse<BoostCommissionResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
                 }
 
@@ -733,19 +718,176 @@ namespace Stycue.Api.Services
             SelectBestCommentRequest request,
             CancellationToken cancellationToken = default)
         {
-            // placeholder
-            return ApiResponse<CommissionRewardResponse>.FailResult("place-holder", "place-holder");
+            if( userId <= 0)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if(commissionId <= 0)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "不合法的委託文 ID", "INVALID_COMMISSION_ID");
+            }
+
+            if(request == null)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "選擇最佳留言資料不可為空", "INVALID_REQUEST");
+            }
+
+            if(request.CommentId <= 0)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "不合法的留言 ID", "INVALID_COMMENT_ID");
+            }
+
+            var feePercent = _pointOptions.Value.FeePercent;
+
+            if( feePercent < 0 || feePercent > 100)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "委託手續費比例設定錯誤", "INVALID_FEE_PERCENT");
+            }
+
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                // get commission
+                var commission = await FindCommissionForUpdateAsync(commissionId, cancellationToken);
+
+                // check commission
+                if( commission == null)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+                }
+
+                // check owner
+                var ownerError = OwnershipGuard.EnsureOwner<CommissionRewardResponse>(
+                    commission.UserId, userId, "只有委託建立者可以選擇最佳留言", "COMMISSION_NOT_OWNER");
+
+                if( ownerError != null)
+                {
+                    return ownerError;
+                }
+
+                // 已結算防線
+                if( commission.AwardedCommentId != null ||
+                    commission.AwardedAt != null ||
+                    commission.RewardSettledAt != null ||
+                    commission.Status == CommissionStatus.Rewarded)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "此委託已完成獎勵結算，無法重複發放積分", "COMMISSION_REWARD_ALREADY_SETTLED");
+                }
+
+                //  驗證是否為不可操作狀態
+                //  Closed
+                if( commission.Status == CommissionStatus.Closed || commission.ClosedAt != null)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "已關閉的委託無法選擇最佳留言", "COMMISSION_CLOSED");
+                }
+
+                // No Award
+                if(commission.Status == CommissionStatus.NoAward)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "此委託已流標，無法選擇最佳留言", "COMMISSION_NO_AWARD");
+                }
+
+                // final check
+                if( !CanSelectBestComment(commission, isOwner: true))
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "目前委託狀態無法選擇最佳留言", "COMMISSION_CANNOT_SELECT_BEST_COMMENT");
+                }
+
+                // filter out comments that can be selected as best comment
+                var awardedComment = FindActiveCommissionComment(commission, request.CommentId);
+
+                if( awardedComment == null)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "找不到可被選為最佳留言的留言", "COMMENT_NOT_SELECTABLE");
+                }
+
+                var alreadyPaid = await _dbContext.PointTransactions.AnyAsync(
+                    t => t.TransactionType == PointTransactionType.CommissionBestCommentReward &&
+                    t.ReferenceType == PointReferenceType.Commission &&
+                    t.ReferenceId == commission.Id, cancellationToken);
+
+                if (alreadyPaid)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "此委託已發放過最佳留言積分", "COMMISSION_REWARD_ALREADY_PAID");
+                }
+
+                var feePoints = (int)Math.Ceiling(commission.Points * feePercent / 100m);
+                var rewardPoints = commission.Points - feePoints;
+
+                if( rewardPoints <= 0)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "可發放獎勵積分必須大於 0", "INVALID_REWARD_POINTS");
+                }
+
+                // give points to best comment
+                var rewardResult = await _pointService.AddPointsAsync(
+                    awardedComment.UserId, rewardPoints, PointTransactionType.CommissionBestCommentReward,
+                    PointReferenceType.Commission, commission.Id,
+                    $"最佳留言獲得委託積分：{commission.Title}", cancellationToken);
+
+                if(!rewardResult.Success)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        rewardResult.Message, rewardResult.ErrorCode);
+                }
+
+                // update commission status
+                var now = DateTime.UtcNow;
+
+                commission.Status = CommissionStatus.Rewarded;
+                commission.AwardedCommentId = awardedComment.Id;
+                commission.AwardedAt = now;
+                commission.RewardSettledAt = now;
+                commission.UpdatedAt = now;
+
+                // save to db
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                var response = BuildCommissionRewardResponse(commission, awardedComment,
+                    rewardPoints, now, rewardResult.Data ?? new PointWalletResponse());
+
+                return ApiResponse<CommissionRewardResponse>.SuccessResult(response,
+                    "最佳留言已選擇，積分已發放");
+            }
+            catch(Exception ex)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                catch(Exception rollEx)
+                {
+                    _logger.LogError(rollEx,
+                        "Rollback select best comment transaction failed. CommissionId: {CommissionId}, UserId: {UserId}",
+                        commissionId, userId);
+                }
+
+                _logger.LogError(ex,
+                    "Select best comment failed. CommissionId: {CommissionId}, UserId: {UserId}, CommentId: {CommentId}",
+                    commissionId, userId, request?.CommentId);
+
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "選擇最佳留言失敗，請稍後再試", "COMMISSION_SELECT_BEST_COMMENT_FAILED");
+            }
         }
 
-        // 委託文到期後結算獎勵
-        //public async Task<ApiResponse<SettleRewardResponse>> SettleRewardAsync(
-        //    int userId,
-        //    int commissionId,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    // placeholder
-        //    return ApiResponse<SettleRewardResponse>.FailResult("place-holder", "place-holder");
-        //}
+        
 
         // private helper methods
 
@@ -793,7 +935,7 @@ namespace Stycue.Api.Services
                 commission.Status != CommissionStatus.Closed &&
                 commission.Status != CommissionStatus.Rewarded &&
                 commission.Status != CommissionStatus.NoAward &&
-                commission.Comments.Any(comment => comment.DeletedAt == null);
+                commission.Comments.Any(comment => comment.DeletedAt == null && comment.ParentCommentId == null);
         }
 
         // 查詢委託文詳情
@@ -823,6 +965,18 @@ namespace Stycue.Api.Services
                 .FirstOrDefaultAsync(c => c.Id == commissionId,cancellationToken);
         }
 
+        // 將可被選為最佳留言的基本條件集中
+        // 只找根留言、排除 reply、排除已刪除
+        // 篩選出被委託者選為最佳的留言
+        private static Comment? FindActiveCommissionComment(
+            Commission commission, int commentId)
+        {
+            return commission.Comments.FirstOrDefault(comment =>
+                comment.Id == commentId &&
+                comment.CommissionId == commission.Id &&
+                comment.ParentCommentId == null &&
+                comment.DeletedAt == null);
+        }
 
         // 綁定標籤
         private static void BindCommissionTags(
@@ -914,6 +1068,23 @@ namespace Stycue.Api.Services
             response.Reposts = BuildCommissionReposts(commission);
 
             return response;
+        }
+
+        // 建立委託文發積分response
+        private static CommissionRewardResponse BuildCommissionRewardResponse(
+            Commission commission, Comment awardedComment, int rewardPoints,
+            DateTime awardedAt, PointWalletResponse receiverWallet)
+        {
+            return new CommissionRewardResponse
+            {
+                CommissionId = commission.Id,
+                Status = commission.Status,
+                AwardedCommentId = awardedComment.Id,
+                RewardReceiverUserId = awardedComment.UserId,
+                RewardPoints = rewardPoints,
+                AwardedAt = awardedAt,
+                ReceiverWallet = receiverWallet
+            };
         }
     }
 }
