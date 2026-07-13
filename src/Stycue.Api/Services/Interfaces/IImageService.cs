@@ -16,7 +16,14 @@ namespace Stycue.Api.Services.Interfaces
         Task<ApiResponse<object>> DeleteAsync(
             int userId, int imageId, CancellationToken cancellationToken =default);
 
+        // Use for validate Image in Create Post/Commission/Comment
         Task<ApiResponse<List<ImageAsset>>> ValidateBindableImagesAsync(
-            int userId, IEnumerable<int> imageIds, ImagePurpose purpose, CancellationToken cancellationToken = default);
+            int userId, IEnumerable<int> imageIds, ImagePurpose purpose, 
+            CancellationToken cancellationToken = default);
+
+        // Use for validate Image in Update Post/ Comment
+        Task<ApiResponse<List<ImageAsset>>> ValidateUpdatableImagesAsync(
+            int userId, IEnumerable<int> imageIds, ImagePurpose purpose,
+            int? currentPostId = null, int? currentCommentId = null, CancellationToken cancellationToken = default);
     }
 }

@@ -140,6 +140,102 @@ namespace Stycue.Api.Services
             return ApiResponse<List<ImageAsset>>.SuccessResult(images, "圖片驗證成功");
         }
 
+        public async Task<ApiResponse<List<ImageAsset>>> ValidateUpdatableImagesAsync(
+            int userId, IEnumerable<int> imageIds, ImagePurpose purpose,
+            int? currentPostId = null, int? currentCommentId = null, CancellationToken cancellationToken = default)
+        {
+            if (userId <= 0)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if (!Enum.IsDefined(typeof(ImagePurpose), purpose))
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult("不合法的圖片用途", "INVALID_IMAGE_PURPOSE");
+            }
+
+            if( currentPostId.HasValue == currentCommentId.HasValue)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult(
+                    "更新圖片目標不合法", "INVALID_IMAGE_UPDATE_TARGET");
+            }
+
+            if(currentPostId.HasValue && currentPostId.Value <= 0)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult(
+                    "不合法的貼文 ID", "INVALID_POST_ID");
+            }
+
+            if(currentCommentId.HasValue && currentCommentId.Value <= 0)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult(
+                    "不合法的留言 ID", "INVALID_COMMENT_ID");
+            }
+
+            var distinctImageIds = imageIds?.Distinct().ToList() ?? new List<int>();
+
+            if(!distinctImageIds.Any())
+            {
+                return ApiResponse<List<ImageAsset>>.SuccessResult(
+                    new List<ImageAsset>(), "圖片驗證成功");
+            }
+
+            if( distinctImageIds.Any(id => id <= 0))
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult(
+                    "包含不合法的圖片 ID", "INVALID_IMAGE_IDS");
+            }
+
+            // get images
+            var images = await _dbContext.ImageAssets.Where(i => distinctImageIds.Contains(i.Id))
+                .ToListAsync(cancellationToken);
+
+            if( images.Count != distinctImageIds.Count)
+            {
+                return ApiResponse<List<ImageAsset>>.FailResult(
+                    "包含不存在的圖片 ID", "IMAGE_NOT_FOUND");
+            }
+
+            foreach(var image in images)
+            {
+                if(image.OwnerUserId != userId)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult(
+                        "沒有權限使用部分圖片", "IMAGE_NOT_OWNER");
+                }
+
+                if( image.Purpose != purpose)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult(
+                        "圖片用途不符合", "INVALID_IMAGE_PURPOSE");
+                }
+
+                if( image.DeletedAt != null)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult(
+                        "包含已刪除的圖片", "IMAGE_DELETED");
+                }
+
+                var unbound =
+                    image.PostId == null &&
+                    image.CommissionId == null &&
+                    image.CommissionRepostId == null &&
+                    image.CommentId == null;
+
+                var boundToCurrentTarget =
+                    (currentPostId.HasValue && image.PostId == currentPostId.Value) ||
+                    (currentCommentId.HasValue && image.CommentId == currentCommentId.Value);
+
+                if( !unbound && !boundToCurrentTarget)
+                {
+                    return ApiResponse<List<ImageAsset>>.FailResult(
+                        "包含已被其他內容使用的圖片", "IMAGE_ALREADY_BOUND");
+                }
+            }
+
+            return ApiResponse<List<ImageAsset>>.SuccessResult(images, "圖片驗證成功");
+        }
+
         // private method
         // 共用圖片上傳方法
         private async Task<ApiResponse<ImageResponse>> UploadAsync(
