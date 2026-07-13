@@ -182,6 +182,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<ICommissionService, CommissionService>();
             builder.Services.AddScoped<IUserSummaryResponseBuilder, UserSummaryResponseBuilder>();
             builder.Services.AddScoped<ICommentService, CommentService>();
+            builder.Services.AddScoped<ILikeService, LikeService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
