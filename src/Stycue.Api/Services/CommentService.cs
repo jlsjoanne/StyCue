@@ -27,17 +27,281 @@ namespace Stycue.Api.Services
         public async Task<ApiResponse<List<CommentResponse>>> GetCommissionCommentsAsync(
             int? userId, int commissionId, CancellationToken cancellationToken = default)
         {
-            // place holder
-            return ApiResponse<List<CommentResponse>>.FailResult("place holder", "PLACE_HOLDER");
+            if( commissionId <= 0)
+            {
+                return ApiResponse<List<CommentResponse>>.FailResult(
+                    "委託文識別碼不合法", "INVALID_COMMISSION_ID");
+            }
+
+            var commissionExist = await _dbContext.Commissions
+                    .AsNoTracking().AnyAsync(c => c.Id == commissionId, cancellationToken);
+
+            if(!commissionExist)
+            {
+                return ApiResponse<List<CommentResponse>>.FailResult(
+                    "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+            }
+
+            return await GetCommentsAsync(
+                userId, postId: null, commissionId: commissionId, cancellationToken);
         }
 
         public async Task<ApiResponse<CommentResponse>> CreateForCommissionAsync(
-            int userId, int commissionId, CreateCommentRequest request, CancellationToken cancellationToken = default)
+            int userId, int commissionId, UpsertCommentRequest request, CancellationToken cancellationToken = default)
         {
-            // place holder
-            return ApiResponse<CommentResponse>.FailResult("place holder", "PLACE_HOLDER");
+            if( userId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if( commissionId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的委託文 ID", "INVALID_COMMISSION_ID");
+            }
+
+            if(request == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "請提供留言資料", "INVALID_COMMENT_REQUEST");
+            }
+
+            var commission = await _dbContext.Commissions
+                .FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken);
+
+            if( commission == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+            }
+
+            if( commission.UserId == userId)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "委託建立者不可留言自己的委託", "COMMISSION_OWNER_CANNOT_COMMENT");
+            }
+
+            // 歷史委託仍可討論，因此不因委託狀態或到期時間阻擋新增留言
+            // 保留作為若未來此規則有更動可直接開啟
+            // -----------------------------------------
+            //var now = DateTime.UtcNow;
+            //if( commission.ExpiredAt <= now)
+            //{
+            //    return ApiResponse<CommentResponse>.FailResult(
+            //        "委託已到期，無法新增留言", "COMMISSION_EXPIRED");
+            //}
+
+            //if (commission.Status == CommissionStatus.Closed ||
+            //    commission.Status == CommissionStatus.Rewarded ||
+            //    commission.Status == CommissionStatus.NoAward ||
+            //    commission.ClosedAt != null ||
+            //    commission.AwardedCommentId != null ||
+            //    commission.AwardedAt != null || commission.RewardSettledAt != null)
+            //{
+            //    return ApiResponse<CommentResponse>.FailResult(
+            //        "目前委託狀態無法新增留言", "COMMISSION_CANNOT_COMMENT");
+            //}
+
+            // ----------------------------------------------------
+
+            return await CreateRootCommentAsync(userId, postId: null, commissionId: commission.Id,
+                request, cancellationToken);
         }
 
+        public async Task<ApiResponse<CommentResponse>> ReplyAsync(
+            int userId, int parentCommentId, UpsertCommentRequest request, CancellationToken cancellationToken = default)
+        {
+            if (userId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if( parentCommentId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的留言 ID", "INVALID_COMMENT_ID");
+            }
+
+            if( request == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "請提供留言資料", "INVALID_COMMENT_REQUEST");
+            }
+
+            var parentComment = await FindActiveCommentAsync(parentCommentId, cancellationToken);
+
+            if( parentComment == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "找不到指定的留言", "COMMENT_NOT_FOUND");
+            }
+
+            if( parentComment.ParentCommentId != null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不可回覆留言回覆", "REPLY_TO_REPLY_NOT_ALLOWED");
+            }
+
+            if( parentComment.PostId.HasValue == parentComment.CommissionId.HasValue)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "留言目標不合法", "INVALID_COMMENT_TARGET");
+            }
+
+            var content = NormalizeContent(request.Content);
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "留言內容不可為空", "COMMENT_CONTENT_REQUIRED");
+            }
+
+            var imageResult = await _imageService.ValidateBindableImagesAsync(
+                userId, request.ImageIds, ImagePurpose.Comment, cancellationToken);
+
+            if(!imageResult.Success)
+            {
+                return ApiResponse<CommentResponse>.FailResult(imageResult.Message, imageResult.ErrorCode);
+            }
+
+            var reply = new Comment
+            {
+                UserId = userId,
+                PostId = parentComment.PostId,
+                CommissionId = parentComment.CommissionId,
+                ParentCommentId = parentComment.Id,
+                Content = content,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.Comments.Add(reply);
+
+            SetCommentImages(reply, imageResult.Data ?? [], replaceExisting: false);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var replyForResponse = await FindCommentForResponseAsync(reply.Id, cancellationToken);
+
+            if( replyForResponse == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "留言建立後查詢失敗", "COMMENT_RESPONSE_NOT_FOUND");
+            }
+
+            return ApiResponse<CommentResponse>.SuccessResult(
+                BuildCommentResponse(replyForResponse, userId), "留言建立成功");
+        }
+
+        public async Task<ApiResponse<CommentResponse>> UpdateAsync(
+            int userId, int commentId, UpsertCommentRequest request, CancellationToken cancellationToken = default)
+        {
+            if (userId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if(commentId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的留言 ID", "INVALID_COMMENT_ID");
+            }
+
+            if( request == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "請提供留言資料", "INVALID_COMMENT_REQUEST");
+            }
+
+            var comment = await FindActiveCommentAsync(commentId, cancellationToken);
+
+            if( comment == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "找不到指定的留言", "COMMENT_NOT_FOUND");
+            }
+
+            if( !CanEditComment(comment, userId))
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "只有留言作者可以編輯留言", "COMMENT_NOT_OWNER");
+            }
+
+            var content = NormalizeContent(request.Content);
+
+            if(string.IsNullOrWhiteSpace(content))
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "留言內容不可為空", "COMMENT_CONTENT_REQUIRED");
+            }
+
+            var imageResult = await _imageService.ValidateUpdatableImagesAsync(
+                userId, request.ImageIds, ImagePurpose.Comment, currentPostId: null, currentCommentId: comment.Id, cancellationToken);
+
+            if(!imageResult.Success)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    imageResult.Message, imageResult.ErrorCode);
+            }
+
+            comment.Content = content;
+            comment.UpdatedAt = DateTime.UtcNow;
+
+            SetCommentImages(comment, imageResult.Data ?? [], replaceExisting: true);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var commentForResponse = await FindCommentForResponseAsync(comment.Id, cancellationToken);
+
+            if( commentForResponse == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "留言更新後查詢失敗", "COMMENT_RESPONSE_NOT_FOUND");
+            }
+
+            return ApiResponse<CommentResponse>.SuccessResult(
+                BuildCommentResponse(commentForResponse, userId), "留言更新成功");
+        }
+
+        public async Task<ApiResponse<object>> DeleteAsync(
+            int userId, int commentId, CancellationToken cancellationToken)
+        {
+            if (userId <= 0)
+            {
+                return ApiResponse<object>.FailResult(
+                    "不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if (commentId <= 0)
+            {
+                return ApiResponse<object>.FailResult(
+                    "不合法的留言 ID", "INVALID_COMMENT_ID");
+            }
+
+            var comment = await FindActiveCommentAsync(commentId, cancellationToken);
+
+            if( comment == null)
+            {
+                return ApiResponse<object>.FailResult(
+                    "找不到指定的留言", "COMMENT_NOT_FOUND");
+            }
+
+            if( !CanDeleteComment(comment, userId))
+            {
+                return ApiResponse<object>.FailResult(
+                    "只有留言作者可以刪除留言", "COMMENT_NOT_OWNER");
+            }
+
+            comment.DeletedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return ApiResponse<object>.SuccessResult(new { commentId = comment.Id }, "留言已刪除");
+        }
+
+        // --------------------------
+        // 貼文待做
         public async Task<ApiResponse<List<CommentResponse>>> GetPostCommentsAsync(
             int? userId, int postId, CancellationToken cancellationToken = default)
         {
@@ -46,31 +310,10 @@ namespace Stycue.Api.Services
         }
 
         public async Task<ApiResponse<CommentResponse>> CreateForPostAsync(
-            int userId, int postId, CreateCommentRequest request, CancellationToken cancellationToken = default)
+            int userId, int postId, UpsertCommentRequest request, CancellationToken cancellationToken = default)
         {
             // place holder
             return ApiResponse<CommentResponse>.FailResult("place holder", "PLACE_HOLDER");
-        }
-
-        public async Task<ApiResponse<CommentResponse>> ReplyAsync(
-            int userId, int parentCommentId, CreateCommentRequest request, CancellationToken cancellationToken = default)
-        {
-            // place holder
-            return ApiResponse<CommentResponse>.FailResult("place holder", "PLACE_HOLDER");
-        }
-
-        public async Task<ApiResponse<CommentResponse>> UpdateAsync(
-            int userId, int commentId, UpdateCommentRequest request, CancellationToken cancellationToken = default)
-        {
-            // place holder
-            return ApiResponse<CommentResponse>.FailResult("place holder", "PLACE_HOLDER");
-        }
-
-        public async Task<ApiResponse<object>> DeleteAsync(
-            int userId, int commentId, CancellationToken cancellationToken)
-        {
-            // place holder
-            return ApiResponse<object>.FailResult("place holder", "PLACE_HOLDER");
         }
 
 
@@ -118,7 +361,7 @@ namespace Stycue.Api.Services
 
             var comments = await BuildCommentQuery(postId, commissionId).ToListAsync(cancellationToken);
 
-            var response = comments.Select(c => BuildCommentResponse(c, currentUserId)).ToList();
+            var response = comments.Select(c => BuildCommentResponse(c, currentUserId, includeReplies: true)).ToList();
 
             return ApiResponse<List<CommentResponse>>.SuccessResult(response, "取得留言列表成功");
         }
@@ -126,7 +369,7 @@ namespace Stycue.Api.Services
         // 建立根留言、驗證圖片、綁圖片、儲存、查單筆 response
         // CreateForCommissionAsync / CreateForPostAsync共用
         private async Task<ApiResponse<CommentResponse>> CreateRootCommentAsync(
-            int userId, int? postId, int? commissionId, CreateCommentRequest request, CancellationToken cancellationToken)
+            int userId, int? postId, int? commissionId, UpsertCommentRequest request, CancellationToken cancellationToken)
         {
             if(postId.HasValue == commissionId.HasValue)
             {
@@ -208,7 +451,6 @@ namespace Stycue.Api.Services
         }
 
         // create / reply / update 共用
-        // 驗證圖片在 ImageService.ValidateBindableImagesAsync => 在CreateRootCommentAsync, ReplyAsync, UpdateAsync內呼叫
         private static void SetCommentImages(
             Comment comment, IEnumerable<ImageAsset> images, bool replaceExisting)
         {
@@ -236,21 +478,28 @@ namespace Stycue.Api.Services
 
         // AutoMapper 打底
         // 補 IsOwner / CanEdit / CanDelete / LikeCount / IsLiked / Images / Replies
-        private CommentResponse BuildCommentResponse(Comment comment, int? currentUserId)
+        private CommentResponse BuildCommentResponse(Comment comment, int? currentUserId, bool includeReplies = false)
         {
             var response = _mapper.Map<CommentResponse>(comment);
+            var likes = comment.CommentLikes ?? [];
+            var images = comment.Images ?? [];
 
             response.IsOwner = currentUserId.HasValue && comment.UserId == currentUserId.Value;
             response.CanEdit = currentUserId.HasValue && CanEditComment(comment, currentUserId.Value);
             response.CanDelete = currentUserId.HasValue && CanDeleteComment(comment, currentUserId.Value);
-            response.LikeCount = comment.CommentLikes.Count;
+            response.LikeCount = likes.Count;
             response.IsLiked = currentUserId.HasValue &&
-                comment.CommentLikes.Any(like => like.UserId == currentUserId.Value);
-            response.Images = _imageResponseBuilder.BuildList(comment.Images);
-            response.Replies = comment.Replies.Where(r => r.DeletedAt == null)
-                .OrderBy(r => r.CreatedAt)
-                .Select(r => BuildCommentResponse(r, currentUserId))
-                .ToList();
+                likes.Any(like => like.UserId == currentUserId.Value);
+            response.Images = _imageResponseBuilder.BuildList(images);
+
+
+            response.Replies = includeReplies
+                ? (comment.Replies ?? [])
+                    .Where(r => r.DeletedAt == null)
+                    .OrderBy(r => r.CreatedAt)
+                    .Select(r => BuildCommentResponse(r, currentUserId, includeReplies: false))
+                    .ToList()
+                : [];
 
             return response;
         }

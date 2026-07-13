@@ -11,7 +11,7 @@ namespace Stycue.Api.Services.Interfaces
 
         // 建立委託文根留言
         Task<ApiResponse<CommentResponse>> CreateForCommissionAsync(
-            int userId, int commissionId, CreateCommentRequest request, CancellationToken cancellationToken = default);
+            int userId, int commissionId, UpsertCommentRequest request, CancellationToken cancellationToken = default);
 
         // 取得貼文留言列表
         Task<ApiResponse<List<CommentResponse>>> GetPostCommentsAsync(
@@ -19,18 +19,18 @@ namespace Stycue.Api.Services.Interfaces
 
         // 建立貼文根留言
         Task<ApiResponse<CommentResponse>> CreateForPostAsync(
-            int userId, int postId, CreateCommentRequest request, CancellationToken cancellationToken = default);
+            int userId, int postId, UpsertCommentRequest request, CancellationToken cancellationToken = default);
 
         // 回覆留言
         Task<ApiResponse<CommentResponse>> ReplyAsync(
-            int userId, int parentCommentId, CreateCommentRequest request, CancellationToken cancellationToken = default);
+            int userId, int parentCommentId, UpsertCommentRequest request, CancellationToken cancellationToken = default);
 
         // 編輯留言
         Task<ApiResponse<CommentResponse>> UpdateAsync(
-            int userId, int commentId, UpdateCommentRequest request, CancellationToken cancellationToken = default);
+            int userId, int commentId, UpsertCommentRequest request, CancellationToken cancellationToken = default);
 
         // 刪除留言
         Task<ApiResponse<object>> DeleteAsync(
-            int userId, int commentId, CancellationToken cancellationToken);
+            int userId, int commentId, CancellationToken cancellationToken = default);
     }
 }
