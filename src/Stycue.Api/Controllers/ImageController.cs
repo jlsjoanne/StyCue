@@ -14,6 +14,7 @@ namespace Stycue.Api.Controllers
     [Authorize]
     [Route("api/images")]
     [ApiController]
+    [Tags("Images")]
     public class ImageController : ControllerBase
     {
         private readonly IImageService _imageService;

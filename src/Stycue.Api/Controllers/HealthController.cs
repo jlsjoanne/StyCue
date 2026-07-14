@@ -11,6 +11,7 @@ namespace Stycue.Api.Controllers
     /// </summary>
     [Route("api/health")]
     [ApiController]
+    [Tags("Health")]
     public class HealthController : ControllerBase
     {
 

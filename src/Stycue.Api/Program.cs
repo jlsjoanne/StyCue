@@ -1,21 +1,25 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.OpenApi;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using Stycue.Api.Data;
+using Stycue.Api.DTOs.Comm;
+using Stycue.Api.Entities;
+using Stycue.Api.Mappings;
+using Stycue.Api.Middlewares;
 using Stycue.Api.Options;
 using Stycue.Api.Services;
 using Stycue.Api.Services.Interfaces;
-using Stycue.Api.Entities;
-using Stycue.Api.Middlewares;
-using Stycue.Api.DTOs.Comm;
-using Stycue.Api.Mappings;
+using System.Reflection;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Xml.Linq;
 
 namespace Stycue.Api
 {
@@ -183,6 +187,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IUserSummaryResponseBuilder, UserSummaryResponseBuilder>();
             builder.Services.AddScoped<ICommentService, CommentService>();
             builder.Services.AddScoped<ILikeService, LikeService>();
+            builder.Services.AddScoped<IHomepageService, HomepageService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -211,6 +216,8 @@ namespace Stycue.Api
                             Scheme = "bearer",
                             BearerFormat = "JWT"
                         };
+
+                        AddControllerXmlTagDescriptions(document);
 
                         return Task.CompletedTask;
                     });
@@ -258,6 +265,77 @@ namespace Stycue.Api
             builder.Logging.AddEventLog(options =>
             {
                 options.SourceName = "Stycue.Api";
+            });
+        }
+
+        private static void AddControllerXmlTagDescriptions(OpenApiDocument document)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{assembly.GetName().Name}.xml");
+
+            if (!File.Exists(xmlPath))
+            {
+                return;
+            }
+
+            var xml = XDocument.Load(xmlPath);
+
+            var tagDescription = assembly
+                .GetTypes()
+                .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
+                .Select(type =>
+                {
+                    var tags = type.GetCustomAttribute<TagsAttribute>()?.Tags;
+                    var tagName = tags?.FirstOrDefault();
+
+                    if (string.IsNullOrWhiteSpace(tagName))
+                    {
+                        return null;
+                    }
+
+                    var memberName = $"T:{type.FullName}";
+                    var member = xml.Descendants("member")
+                        .FirstOrDefault(member =>
+                            string.Equals(member.Attribute("name")?.Value, memberName, StringComparison.Ordinal));
+
+                    var summary = member?.Element("summary")?.Value.Trim();
+                    var remarks = member?.Element("remarks")?.Value.Trim();
+
+                    var description = string.Join(
+                        Environment.NewLine + Environment.NewLine,
+                        new[] { summary, remarks }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+                    return string.IsNullOrWhiteSpace(description) ? null : new { TagName = tagName, Description = description };
+                })
+                .Where(item => item != null)
+                .ToDictionary(item => item!.TagName, item => item!.Description);
+
+            document.Tags ??= new HashSet<OpenApiTag>();
+
+            foreach(var tag in tagDescription)
+            {
+                AddOrUpdateTagDescription(document, tag.Key, tag.Value);
+            }
+        }
+
+        private static void AddOrUpdateTagDescription(
+            OpenApiDocument document, string tagName, string description)
+        {
+            document.Tags ??= new HashSet<OpenApiTag>();
+
+            var existingTag = document.Tags.FirstOrDefault(tag =>
+                string.Equals(tag.Name, tagName, StringComparison.Ordinal));
+
+            if(existingTag != null)
+            {
+                existingTag.Description = description;
+                return;
+            }
+
+            document.Tags.Add(new OpenApiTag
+            {
+                Name = tagName,
+                Description = description
             });
         }
     }

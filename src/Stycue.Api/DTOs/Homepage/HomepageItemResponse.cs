@@ -44,6 +44,12 @@ namespace Stycue.Api.DTOs.Homepage
         public DateTime CreatedAt { get; set; }
 
         /// <summary>
+        /// 更新時間
+        /// </summary>
+        public DateTime? UpdatedAt { get; set; }
+
+
+        /// <summary>
         /// 按讚數
         /// </summary>
         public int LikeCount { get; set; }
@@ -66,21 +72,25 @@ namespace Stycue.Api.DTOs.Homepage
         /// <summary>
         /// 委託文狀態，僅委託文會回傳
         /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public CommissionStatus? CommissionStatus { get; set; }
 
         /// <summary>
         /// 委託文目前懸賞積分，僅委託文會回傳
         /// </summary>
-        public int? CommisionPoints { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? CommissionPoints { get; set; }
 
         /// <summary>
         /// 委託文到期時間，僅委託文會回傳
         /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? ExpiredAt { get; set; }
 
         /// <summary>
         /// 貼文類型，僅分享/提問文會回傳
         /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public PostType? PostType { get; set; }
     }
 }

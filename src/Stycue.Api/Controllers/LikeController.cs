@@ -18,6 +18,7 @@ namespace Stycue.Api.Controllers
     [Authorize]
     [Route("api")]
     [ApiController]
+    [Tags("Likes")]
     public class LikeController : ControllerBase
     {
         private readonly ILikeService _likeService;

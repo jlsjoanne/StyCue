@@ -17,6 +17,7 @@ namespace Stycue.Api.Controllers
     /// </remarks>
     [Route("api/commissions")]
     [ApiController]
+    [Tags("Commissions")]
     public class CommissionController : ControllerBase
     {
         private readonly ICommissionService _commissionService;

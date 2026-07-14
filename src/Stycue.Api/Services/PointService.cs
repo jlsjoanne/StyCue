@@ -1,5 +1,4 @@
 ﻿using AutoMapper;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Stycue.Api.Data;
@@ -7,6 +6,7 @@ using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Points;
 using Stycue.Api.Entities;
 using Stycue.Api.Enums;
+using Stycue.Api.Extensions;
 using Stycue.Api.Options;
 using Stycue.Api.Services.Interfaces;
 
@@ -298,8 +298,7 @@ namespace Stycue.Api.Services
                     "不合法的交易關聯來源", "INVALID_REFERENCE_TYPE");
             }
 
-            var page = Math.Max(query.Page, 1);
-            var pageSize = Math.Clamp(query.PageSize, 1, 50);
+            var (page, pageSize) = PagingHelper.Normalize(query.Page, query.PageSize);
 
             var transactionsQuery = _dbContext.PointTransactions.AsNoTracking().Where(t => t.UserId == userId);
 
@@ -348,7 +347,7 @@ namespace Stycue.Api.Services
                 Page = page,
                 PageSize = pageSize,
                 TotalCount = totalCount,
-                TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling((double)totalCount / pageSize)
+                TotalPages = PagingHelper.CalculateTotalPages(totalCount, pageSize)
             };
 
             return ApiResponse<PagedResponse<PointTransactionResponse>>.SuccessResult(response, "積分交易紀錄查詢成功");

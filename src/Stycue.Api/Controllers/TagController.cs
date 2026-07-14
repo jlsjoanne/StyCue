@@ -13,6 +13,7 @@ namespace Stycue.Api.Controllers
     /// </summary>
     [Route("api/tags")]
     [ApiController]
+    [Tags("Tags")]
     public class TagController : ControllerBase
     {
         private readonly ITagService _tagService;

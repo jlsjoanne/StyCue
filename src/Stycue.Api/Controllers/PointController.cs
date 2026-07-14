@@ -14,6 +14,7 @@ namespace Stycue.Api.Controllers
     [Authorize]
     [Route("api/points")]
     [ApiController]
+    [Tags("Points")]
     public class PointController : ControllerBase
     {
         private readonly IPointService _pointService;

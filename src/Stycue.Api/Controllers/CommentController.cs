@@ -17,6 +17,7 @@ namespace Stycue.Api.Controllers
     /// </remarks>
     [Route("api")]
     [ApiController]
+    [Tags("Comments")]
     public class CommentController : ControllerBase
     {
         private readonly ICommentService _commentService;

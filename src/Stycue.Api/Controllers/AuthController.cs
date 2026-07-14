@@ -7,8 +7,12 @@ using Stycue.Api.Constants;
 
 namespace Stycue.Api.Controllers
 {
+    /// <summary>
+    /// 註冊、登入驗證API
+    /// </summary>
     [Route("api/auth")]
     [ApiController]
+    [Tags("Auth")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
