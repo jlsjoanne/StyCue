@@ -36,6 +36,50 @@ namespace Stycue.Api.Services
             return UploadAsync(userId, request, ImagePurpose.Comment, "comments", cancellationToken);
         }
 
+        public async Task<ApiResponse<ImageResponse>> UploadAvatarImageAsync(
+            int userId, UploadAvatarImageRequest request, CancellationToken cancellationToken = default)
+        {
+            if( request == null)
+            {
+                return ApiResponse<ImageResponse>.FailResult(
+                    "請提供圖片上傳資料", "INVALID_IMAGE_REQUEST");
+            }
+
+            var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+            if( user == null)
+            {
+                return ApiResponse<ImageResponse>.FailResult(
+                    "查無此使用者", "USER_NOT_FOUND");
+            }
+
+            var uploadRequest = new UploadImageRequest
+            {
+                File = request.File
+            };
+
+            var uploadResult = await UploadAsync(user.Id, uploadRequest, ImagePurpose.Profile, "avatars", cancellationToken);
+
+            if( !uploadResult.Success || uploadResult.Data == null)
+            {
+                return uploadResult;
+            }
+
+            // update avatar image to user profile
+            user.AvatarImageId = uploadResult.Data.ImageId;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return ApiResponse<ImageResponse>.SuccessResult(uploadResult.Data, "大頭貼上傳成功");
+        }
+
+        public Task<ApiResponse<ImageResponse>> UploadPostImageAsync(
+            int userId, UploadImageRequest request, CancellationToken cancellationToken = default)
+        {
+            return UploadAsync(userId, request, ImagePurpose.Post, "posts", cancellationToken);
+        }
+
         public async Task<ApiResponse<object>> DeleteAsync(
             int userId, int imageId, CancellationToken cancellationToken = default)
         {
@@ -58,6 +102,14 @@ namespace Stycue.Api.Services
 
             // ImageAsset soft delete => metadata紀錄刪除時間
             image.DeletedAt = DateTime.UtcNow;
+
+            var avatarUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId && u.AvatarImageId == image.Id, cancellationToken);
+
+            if( avatarUser != null)
+            {
+                avatarUser.AvatarImageId = null;
+                avatarUser.UpdatedAt = DateTime.UtcNow;
+            }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -241,6 +293,12 @@ namespace Stycue.Api.Services
         private async Task<ApiResponse<ImageResponse>> UploadAsync(
             int userId, UploadImageRequest request, ImagePurpose purpose, string folder, CancellationToken cancellationToken)
         {
+            // Validate user
+            if( userId <= 0)
+            {
+                return ApiResponse<ImageResponse>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
             if( request == null)
             {
                 return ApiResponse<ImageResponse>.FailResult("請提供圖片上傳資料", "INVALID_IMAGE_REQUEST");

@@ -13,6 +13,12 @@ namespace Stycue.Api.Services.Interfaces
         Task<ApiResponse<ImageResponse>> UploadCommentImageAsync(
             int userId, UploadImageRequest request, CancellationToken cancellationToken = default);
 
+        Task<ApiResponse<ImageResponse>> UploadPostImageAsync(
+            int userId, UploadImageRequest request, CancellationToken cancellationToken = default);
+
+        Task<ApiResponse<ImageResponse>> UploadAvatarImageAsync(
+            int userId, UploadAvatarImageRequest request, CancellationToken cancellationToken = default);
+
         Task<ApiResponse<object>> DeleteAsync(
             int userId, int imageId, CancellationToken cancellationToken =default);
 
