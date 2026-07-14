@@ -34,11 +34,20 @@ namespace Stycue.Api.Services
                 return commentIdError;
             }
 
-            var commentExists = await ActiveCommentExistsAsync(commentId, cancellationToken);
-            if(!commentExists)
+            var comment = await _dbContext.Comments.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == commentId && c.DeletedAt == null, cancellationToken);
+
+            if(comment == null)
             {
                 return ApiResponse<LikeResponse>.FailResult(
                     "找不到指定的留言", "COMMENT_NOT_FOUND");
+            }
+
+            if(comment.CommissionId != null && comment.ParentCommentId == null &&
+                comment.UserId == userId)
+            {
+                return ApiResponse<LikeResponse>.FailResult(
+                    "委託文留言者不可按讚自己的留言", "COMMISSION_COMMENTER_CANNOT_LIKE_OWN_COMMENT");
             }
 
             var alreadyLiked = await _dbContext.CommentLikes

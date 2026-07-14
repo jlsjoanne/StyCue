@@ -31,8 +31,9 @@ namespace Stycue.Api.Controllers
         /// 對留言按讚
         /// </summary>
         /// <remarks>
-        /// 需登入後使用
-        /// 若目前使用者已對此留言按讚，會直接回傳目前按讚狀態與按讚數，不會建立重複按讚資料
+        /// 需登入後使用。
+        /// 若目前使用者已對此留言按讚，會直接回傳目前按讚狀態與按讚數，不會建立重複按讚資料。
+        /// 設定委託文留言者不能按自己留言的讚。
         /// </remarks>
         /// <param name="commentId">留言 ID</param>
         /// <param name="cancellationToken">Request 取消通知</param>
