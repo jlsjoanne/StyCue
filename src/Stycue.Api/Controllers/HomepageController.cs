@@ -61,7 +61,7 @@ namespace Stycue.Api.Controllers
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> Index(HomepageQueryRequest request, CancellationToken cancellationToken)
+        public async Task<IActionResult> Index([FromQuery]HomepageQueryRequest request, CancellationToken cancellationToken)
         {
             var userId = User.GetUserIdOrNull();
 
