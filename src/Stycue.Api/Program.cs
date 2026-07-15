@@ -1,3 +1,25 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
+using Scalar.AspNetCore;
+using Stycue.Api.Data;
+using Stycue.Api.DTOs.Comm;
+using Stycue.Api.Entities;
+using Stycue.Api.Mappings;
+using Stycue.Api.Middlewares;
+using Stycue.Api.Options;
+using Stycue.Api.Services;
+using Stycue.Api.Services.Interfaces;
+using System.Reflection;
+using System.Runtime.Versioning;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Xml.Linq;
 
 namespace Stycue.Api
 {
@@ -7,28 +29,327 @@ namespace Stycue.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+            if(OperatingSystem.IsWindows())
+            {
+                AddWindowsEventLog(builder);
+            }
 
-            builder.Services.AddControllers();
+            const long MaxRequestBodySize = 20 * 1024 * 1024;
+
+            // Kestrel request body limit
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.Limits.MaxRequestBodySize = MaxRequestBodySize;
+            });
+
+            // Add services to the container.
+            
+            // Add Controller
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                    options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+                    options.JsonSerializerOptions.Converters.Add(
+                        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                });
+
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var response = ApiResponse<object>.FailResult(
+                        "請求資料驗證失敗", "VALIDATION_FAILED");
+
+                    return new BadRequestObjectResult(response);
+                };
+            });
+
+            // Set Multipart form upload limit
+            builder.Services.Configure<FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = MaxRequestBodySize;
+            });
+
+            // Add Options
+            builder.Services.Configure<JwtOptions>(
+                builder.Configuration.GetSection("Jwt"));
+            builder.Services.Configure<GoogleAuthOptions>(
+                builder.Configuration.GetSection("GoogleAuth"));
+            builder.Services.Configure<BlobStorageOptions>(
+                builder.Configuration.GetSection("BlobStorage"));
+            builder.Services.Configure<PointsOptions>(
+                builder.Configuration.GetSection("Points"));
+
+            // Database Connection String
+            builder.Services.AddDbContext<AppDbContext>(options =>
+                options.UseSqlServer(
+                    builder.Configuration.GetConnectionString("DefaultConnection")));
+
+            // Cors 跨域設定
+            var corsPolicy = builder.Configuration["Cors:Policy"] ?? "Frontend";
+
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("Frontend", policy =>
+                {
+                    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+
+                    policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+                });
+                options.AddPolicy("All", policy =>
+                {
+                    policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+                });
+            });
+
+            // JWT 驗證
+            var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
+
+            var jwtSecretKeys = builder.Configuration["Jwt:SecretKey"];
+
+            if(jwtOptions == null)
+            {
+                throw new InvalidOperationException("Jwt Options is missing.");
+            }
+            if (String.IsNullOrWhiteSpace(jwtSecretKeys))
+            {
+                throw new InvalidOperationException("Jwt:SecretKey is missing");
+            }
+
+            // JWT Authentication setting
+            // AddAuthentication => 註冊使用JWT認證機制驗證，驗證沒有通過時，也使用JWT Bearer 的方式回應 401 Unauthorized
+            // AddJwtBearer => 設定 JWT Bearer 的細節
+            builder.Services
+                .AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                })
+                .AddJwtBearer(options =>
+                {
+                    options.RequireHttpsMetadata = true;
+                    options.SaveToken = false;
+
+                    // 收到 JWT 後，要檢查哪些東西才算合法
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions!.Issuer,
+
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+
+                        ValidateLifetime = true,
+                        ClockSkew = TimeSpan.Zero, //不給 token 額外寬限時間
+
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(jwtSecretKeys))
+                    };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnChallenge = async context =>
+                        {
+                            // 呼叫HandleResponse原因 => 這次 401 response 我自己處理，框架不要再寫預設 challenge response。
+                            context.HandleResponse();
+
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            context.Response.ContentType = "application/json; charset=utf-8";
+
+                            var response = ApiResponse<object>.FailResult("未登入或登入資訊無效", "UNAUTHORIZED");
+
+                            await context.Response.WriteAsJsonAsync(response);
+                        },
+                        OnForbidden = async context =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.ContentType = "application/json; charset=utf-8";
+
+                            var response = ApiResponse<object>.FailResult("沒有權限執行此操作", "FORBIDDEN");
+
+                            await context.Response.WriteAsJsonAsync(response);
+                        }
+                    };
+                });
+
+
+            // Authorization
+            builder.Services.AddAuthorization();
+
+            // AutoMapper
+            builder.Services.AddAutoMapper(cfg => { }, typeof(MappingAssemblyMarker));
+
+            // Application Services
+
+            builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+            // DI 建立 PasswordService 時，需要知道 IPasswordHasher<User> 要用哪個實作類別
+            builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+            builder.Services.AddScoped<IPasswordService, PasswordService>();
+            builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
+            builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
+            builder.Services.AddScoped<IImageService, ImageService>();
+            builder.Services.AddScoped<ITagService, TagService>();
+            builder.Services.AddScoped<IPointService, PointService>();
+            builder.Services.AddScoped<IImageResponseBuilder, ImageResponseBuilder>();
+            builder.Services.AddScoped<ICommissionService, CommissionService>();
+            builder.Services.AddScoped<IUserSummaryResponseBuilder, UserSummaryResponseBuilder>();
+            builder.Services.AddScoped<ICommentService, CommentService>();
+            builder.Services.AddScoped<ILikeService, LikeService>();
+            builder.Services.AddScoped<IHomepageService, HomepageService>();
+            builder.Services.AddScoped<IPostService, PostService>();
+            builder.Services.AddScoped<IFavoriteService, FavoriteService>();
+
+            // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-            builder.Services.AddOpenApi();
+            var docs = builder.Configuration.GetSection(ApiDocOptions.SectionName)
+                .Get<ApiDocOptions>() ?? new();
+
+            // 啟用 OpenAPI 文件，設定文件標題/版本，並告訴 Scalar 這份 API 支援 JWT Bearer 認證
+            if (docs.Enabled)
+            {
+                builder.Services.AddOpenApi(docs.Version, options =>
+                {
+                    options.AddDocumentTransformer((document, _, _) =>
+                    {
+                        document.Info = new OpenApiInfo
+                        {
+                            Title = docs.Title,
+                            Version = docs.Version
+                        };
+
+                        document.Components ??= new OpenApiComponents();
+                        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+
+                        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+                        {
+                            Type = SecuritySchemeType.Http,
+                            Scheme = "bearer",
+                            BearerFormat = "JWT"
+                        };
+
+                        AddControllerXmlTagDescriptions(document);
+
+                        return Task.CompletedTask;
+                    });
+                });
+            }
+
+
 
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
+
+            // Development-only API docs
+            if (docs.Enabled && (app.Environment.IsDevelopment() || app.Environment.IsStaging()))
             {
                 app.MapOpenApi();
+                app.MapScalarApiReference(docs.Route, options =>
+                {
+                    options.WithTitle(docs.Title);
+                    options.AddPreferredSecuritySchemes("Bearer");
+                    options.DisableAgent();
+                });
             }
+
+            // Middleware pipeline
+
+            // exception middleware
+            app.UseMiddleware<GlobalExceptionMiddleware>();
 
             app.UseHttpsRedirection();
 
-            app.UseAuthorization();
+            app.UseCors(corsPolicy);
 
+            app.UseAuthentication();
+            app.UseAuthorization();
 
             app.MapControllers();
 
             app.Run();
+        }
+
+        [SupportedOSPlatform("windows")]
+        private static void AddWindowsEventLog(WebApplicationBuilder builder)
+        {
+            builder.Logging.AddEventLog(options =>
+            {
+                options.SourceName = "Stycue.Api";
+            });
+        }
+
+        private static void AddControllerXmlTagDescriptions(OpenApiDocument document)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{assembly.GetName().Name}.xml");
+
+            if (!File.Exists(xmlPath))
+            {
+                return;
+            }
+
+            var xml = XDocument.Load(xmlPath);
+
+            var tagDescription = assembly
+                .GetTypes()
+                .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
+                .Select(type =>
+                {
+                    var tags = type.GetCustomAttribute<TagsAttribute>()?.Tags;
+                    var tagName = tags?.FirstOrDefault();
+
+                    if (string.IsNullOrWhiteSpace(tagName))
+                    {
+                        return null;
+                    }
+
+                    var memberName = $"T:{type.FullName}";
+                    var member = xml.Descendants("member")
+                        .FirstOrDefault(member =>
+                            string.Equals(member.Attribute("name")?.Value, memberName, StringComparison.Ordinal));
+
+                    var summary = member?.Element("summary")?.Value.Trim();
+                    var remarks = member?.Element("remarks")?.Value.Trim();
+
+                    var description = string.Join(
+                        Environment.NewLine + Environment.NewLine,
+                        new[] { summary, remarks }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+                    return string.IsNullOrWhiteSpace(description) ? null : new { TagName = tagName, Description = description };
+                })
+                .Where(item => item != null)
+                .ToDictionary(item => item!.TagName, item => item!.Description);
+
+            document.Tags ??= new HashSet<OpenApiTag>();
+
+            foreach(var tag in tagDescription)
+            {
+                AddOrUpdateTagDescription(document, tag.Key, tag.Value);
+            }
+        }
+
+        private static void AddOrUpdateTagDescription(
+            OpenApiDocument document, string tagName, string description)
+        {
+            document.Tags ??= new HashSet<OpenApiTag>();
+
+            var existingTag = document.Tags.FirstOrDefault(tag =>
+                string.Equals(tag.Name, tagName, StringComparison.Ordinal));
+
+            if(existingTag != null)
+            {
+                existingTag.Description = description;
+                return;
+            }
+
+            document.Tags.Add(new OpenApiTag
+            {
+                Name = tagName,
+                Description = description
+            });
         }
     }
 }
