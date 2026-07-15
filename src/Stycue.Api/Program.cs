@@ -1,14 +1,25 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.OpenApi;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using Stycue.Api.Data;
+using Stycue.Api.DTOs.Comm;
+using Stycue.Api.Entities;
+using Stycue.Api.Mappings;
+using Stycue.Api.Middlewares;
 using Stycue.Api.Options;
 using Stycue.Api.Services;
 using Stycue.Api.Services.Interfaces;
-using Stycue.Api.Entities;
+using System.Reflection;
+using System.Runtime.Versioning;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Xml.Linq;
 
 namespace Stycue.Api
 {
@@ -18,15 +29,57 @@ namespace Stycue.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+            if(OperatingSystem.IsWindows())
+            {
+                AddWindowsEventLog(builder);
+            }
 
-            builder.Services.AddControllers();
+            const long MaxRequestBodySize = 20 * 1024 * 1024;
+
+            // Kestrel request body limit
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.Limits.MaxRequestBodySize = MaxRequestBodySize;
+            });
+
+            // Add services to the container.
+            
+            // Add Controller
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                    options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+                    options.JsonSerializerOptions.Converters.Add(
+                        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                });
+
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var response = ApiResponse<object>.FailResult(
+                        "請求資料驗證失敗", "VALIDATION_FAILED");
+
+                    return new BadRequestObjectResult(response);
+                };
+            });
+
+            // Set Multipart form upload limit
+            builder.Services.Configure<FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = MaxRequestBodySize;
+            });
 
             // Add Options
             builder.Services.Configure<JwtOptions>(
                 builder.Configuration.GetSection("Jwt"));
             builder.Services.Configure<GoogleAuthOptions>(
                 builder.Configuration.GetSection("GoogleAuth"));
+            builder.Services.Configure<BlobStorageOptions>(
+                builder.Configuration.GetSection("BlobStorage"));
+            builder.Services.Configure<PointsOptions>(
+                builder.Configuration.GetSection("Points"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -93,6 +146,31 @@ namespace Stycue.Api
                         ValidateIssuerSigningKey = true,
                         IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(jwtSecretKeys))
                     };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnChallenge = async context =>
+                        {
+                            // 呼叫HandleResponse原因 => 這次 401 response 我自己處理，框架不要再寫預設 challenge response。
+                            context.HandleResponse();
+
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            context.Response.ContentType = "application/json; charset=utf-8";
+
+                            var response = ApiResponse<object>.FailResult("未登入或登入資訊無效", "UNAUTHORIZED");
+
+                            await context.Response.WriteAsJsonAsync(response);
+                        },
+                        OnForbidden = async context =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.ContentType = "application/json; charset=utf-8";
+
+                            var response = ApiResponse<object>.FailResult("沒有權限執行此操作", "FORBIDDEN");
+
+                            await context.Response.WriteAsJsonAsync(response);
+                        }
+                    };
                 });
 
 
@@ -100,7 +178,7 @@ namespace Stycue.Api
             builder.Services.AddAuthorization();
 
             // AutoMapper
-
+            builder.Services.AddAutoMapper(cfg => { }, typeof(MappingAssemblyMarker));
 
             // Application Services
 
@@ -111,6 +189,18 @@ namespace Stycue.Api
             builder.Services.AddScoped<IPasswordService, PasswordService>();
             builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
+            builder.Services.AddScoped<IImageService, ImageService>();
+            builder.Services.AddScoped<ITagService, TagService>();
+            builder.Services.AddScoped<IPointService, PointService>();
+            builder.Services.AddScoped<IImageResponseBuilder, ImageResponseBuilder>();
+            builder.Services.AddScoped<ICommissionService, CommissionService>();
+            builder.Services.AddScoped<IUserSummaryResponseBuilder, UserSummaryResponseBuilder>();
+            builder.Services.AddScoped<ICommentService, CommentService>();
+            builder.Services.AddScoped<ILikeService, LikeService>();
+            builder.Services.AddScoped<IHomepageService, HomepageService>();
+            builder.Services.AddScoped<IPostService, PostService>();
+            builder.Services.AddScoped<IFavoriteService, FavoriteService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -140,6 +230,8 @@ namespace Stycue.Api
                             BearerFormat = "JWT"
                         };
 
+                        AddControllerXmlTagDescriptions(document);
+
                         return Task.CompletedTask;
                     });
                 });
@@ -164,6 +256,10 @@ namespace Stycue.Api
             }
 
             // Middleware pipeline
+
+            // exception middleware
+            app.UseMiddleware<GlobalExceptionMiddleware>();
+
             app.UseHttpsRedirection();
 
             app.UseCors(corsPolicy);
@@ -174,6 +270,86 @@ namespace Stycue.Api
             app.MapControllers();
 
             app.Run();
+        }
+
+        [SupportedOSPlatform("windows")]
+        private static void AddWindowsEventLog(WebApplicationBuilder builder)
+        {
+            builder.Logging.AddEventLog(options =>
+            {
+                options.SourceName = "Stycue.Api";
+            });
+        }
+
+        private static void AddControllerXmlTagDescriptions(OpenApiDocument document)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{assembly.GetName().Name}.xml");
+
+            if (!File.Exists(xmlPath))
+            {
+                return;
+            }
+
+            var xml = XDocument.Load(xmlPath);
+
+            var tagDescription = assembly
+                .GetTypes()
+                .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
+                .Select(type =>
+                {
+                    var tags = type.GetCustomAttribute<TagsAttribute>()?.Tags;
+                    var tagName = tags?.FirstOrDefault();
+
+                    if (string.IsNullOrWhiteSpace(tagName))
+                    {
+                        return null;
+                    }
+
+                    var memberName = $"T:{type.FullName}";
+                    var member = xml.Descendants("member")
+                        .FirstOrDefault(member =>
+                            string.Equals(member.Attribute("name")?.Value, memberName, StringComparison.Ordinal));
+
+                    var summary = member?.Element("summary")?.Value.Trim();
+                    var remarks = member?.Element("remarks")?.Value.Trim();
+
+                    var description = string.Join(
+                        Environment.NewLine + Environment.NewLine,
+                        new[] { summary, remarks }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+                    return string.IsNullOrWhiteSpace(description) ? null : new { TagName = tagName, Description = description };
+                })
+                .Where(item => item != null)
+                .ToDictionary(item => item!.TagName, item => item!.Description);
+
+            document.Tags ??= new HashSet<OpenApiTag>();
+
+            foreach(var tag in tagDescription)
+            {
+                AddOrUpdateTagDescription(document, tag.Key, tag.Value);
+            }
+        }
+
+        private static void AddOrUpdateTagDescription(
+            OpenApiDocument document, string tagName, string description)
+        {
+            document.Tags ??= new HashSet<OpenApiTag>();
+
+            var existingTag = document.Tags.FirstOrDefault(tag =>
+                string.Equals(tag.Name, tagName, StringComparison.Ordinal));
+
+            if(existingTag != null)
+            {
+                existingTag.Description = description;
+                return;
+            }
+
+            document.Tags.Add(new OpenApiTag
+            {
+                Name = tagName,
+                Description = description
+            });
         }
     }
 }

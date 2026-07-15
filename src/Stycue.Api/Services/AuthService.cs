@@ -6,6 +6,7 @@ using Stycue.Api.DTOs.Comm;
 using Stycue.Api.Entities;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Services.Models;
+using Stycue.Api.Constants;
 
 namespace Stycue.Api.Services
 {
@@ -15,13 +16,15 @@ namespace Stycue.Api.Services
         private readonly IPasswordService _passwordService;
         private readonly IJwtTokenService _jwtTokenService;
         private readonly IGoogleAuthService _googleAuthService;
+        private readonly IPointService _pointService;
 
-        public AuthService(AppDbContext appDbContext, IPasswordService passwordService, IJwtTokenService jwtTokenService, IGoogleAuthService googleAuthService)
+        public AuthService(AppDbContext appDbContext, IPasswordService passwordService, IJwtTokenService jwtTokenService, IGoogleAuthService googleAuthService, IPointService pointService)
         {
             _dbContext = appDbContext;
             _passwordService = passwordService;
             _jwtTokenService = jwtTokenService;
             _googleAuthService = googleAuthService;
+            _pointService = pointService;
         }
 
         public async Task<ApiResponse<RegisterResponse>> RegisterAsync(RegisterRequest request)
@@ -65,6 +68,8 @@ namespace Stycue.Api.Services
             // 寫入資料庫
             await _dbContext.SaveChangesAsync();
 
+            await _pointService.GrantRegistrationRewardAsync(user.Id);
+
             // 回傳 RegisterResponse
             var response = new RegisterResponse
             {
@@ -86,12 +91,17 @@ namespace Stycue.Api.Services
             }
 
             // 查詢User
-            var normalizedEmail = request.Email.Trim().ToUpperInvariant();
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
             var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
             // 用Email查使用者是否已註冊
             if(user == null)
             {
                 return ApiResponse<LoginResponse>.FailResult("帳號或密碼錯誤");
+            }
+
+            if(user.DeactivatedAt != null)
+            {
+                return ApiResponse<LoginResponse>.FailResult("此帳號目前無法使用，請聯繫客服或管理員", AuthErrorCodes.AccountDeactivated);
             }
 
             // 檢查使用者是否有 PasswordHash => 若沒有，則可能為Google註冊登入，回傳使用Google登入
@@ -145,7 +155,7 @@ namespace Stycue.Api.Services
 
             if(googlePayload == null)
             {
-                return ApiResponse<LoginResponse>.FailResult("Google登入驗證失敗");
+                return ApiResponse<LoginResponse>.FailResult("Google登入驗證失敗", AuthErrorCodes.GoogleTokenInvalid);
             }
 
             var normalizedEmail = googlePayload.Email.Trim().ToLowerInvariant();
@@ -156,6 +166,11 @@ namespace Stycue.Api.Services
             if(user == null)
             {
                 user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+            }
+
+            if(user != null && user.DeactivatedAt != null)
+            {
+                return ApiResponse<LoginResponse>.FailResult("此帳號目前無法使用，請聯繫客服或管理員", AuthErrorCodes.AccountDeactivated);
             }
 
             if(user != null && String.IsNullOrWhiteSpace(user.GoogleSub))
@@ -179,6 +194,8 @@ namespace Stycue.Api.Services
 
                 _dbContext.Users.Add(user);
                 await _dbContext.SaveChangesAsync();
+
+                await _pointService.GrantRegistrationRewardAsync(user.Id);
             }
 
             // create JwtPayload

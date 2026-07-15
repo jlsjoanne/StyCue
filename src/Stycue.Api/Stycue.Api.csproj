@@ -28,9 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Mappings\" />
-    <Folder Include="Extensions\" />
-    <Folder Include="Constants\" />
+    <Folder Include="DTOs\Follow\" />
   </ItemGroup>
 
 </Project>

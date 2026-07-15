@@ -3,11 +3,16 @@ using Microsoft.AspNetCore.Mvc;
 using Stycue.Api.DTOs.Auth;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.Services.Interfaces;
+using Stycue.Api.Constants;
 
 namespace Stycue.Api.Controllers
 {
-    [Route("api/[controller]")]
+    /// <summary>
+    /// 註冊、登入驗證API
+    /// </summary>
+    [Route("api/auth")]
     [ApiController]
+    [Tags("Auth")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
@@ -45,16 +50,23 @@ namespace Stycue.Api.Controllers
         /// <param name="request">登入資料</param>
         /// <returns>登入成功後的 JWT Access Token 與使用者基本資料</returns>
         /// <response code="200">登入成功</response>
-        /// <response code="401">帳號或密碼錯誤</response>
+        /// <response code="401">登入失敗，例如帳號或密碼錯誤，或此帳號需使用 Google 登入</response>
+        /// <response code="403">帳號已停用，回傳 ErrorCode = ACCOUNT_DEACTIVATED</response>
         [HttpPost("login")]
         [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> Login(LoginRequest request)
         {
             var result = await _authService.LoginAsync(request);
 
             if (!result.Success)
             {
+                if (result.ErrorCode == AuthErrorCodes.AccountDeactivated)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+
                 return Unauthorized(result);
             }
 
@@ -67,16 +79,23 @@ namespace Stycue.Api.Controllers
         /// <param name="request">Google ID Token</param>
         /// <returns>Google 登入成功後的 JWT Access Token 與使用者基本資料</returns>
         /// <response code="200">Google 登入成功</response>
-        /// <response code="401">Google Token 驗證失敗</response>
+        /// <response code="401">Google Token 為空或驗證失敗</response>
+        /// <response code="403">帳號已停用，回傳 ErrorCode = ACCOUNT_DEACTIVATED</response>
         [HttpPost("google-login")]
         [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> GoogleLogin(GoogleLoginRequest request)
         {
             var result = await _authService.GoogleLoginAsync(request);
 
             if (!result.Success)
             {
+                if (result.ErrorCode == AuthErrorCodes.AccountDeactivated)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+
                 return Unauthorized(result);
             }
 
