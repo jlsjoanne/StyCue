@@ -11,7 +11,8 @@ namespace Stycue.Api.Mappings
         {
             CreateMap<User, UserSummaryResponse>()
                 .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Id))
-                .ForMember(dest => dest.AvatarUrl, opt => opt.Ignore());
+                .ForMember(dest => dest.AvatarUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.DisplayName, opt => opt.MapFrom(src => src.NickName));
 
             CreateMap<Tag, TagResponse>()
                 .ForMember(dest => dest.TagId, opt => opt.MapFrom(src => src.Id))

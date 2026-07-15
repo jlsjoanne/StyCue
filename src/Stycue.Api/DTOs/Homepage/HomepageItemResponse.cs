@@ -48,6 +48,10 @@ namespace Stycue.Api.DTOs.Homepage
         /// </summary>
         public DateTime? UpdatedAt { get; set; }
 
+        /// <summary>
+        /// 留言數
+        /// </summary>
+        public int CommentCount { get; set; }
 
         /// <summary>
         /// 按讚數
@@ -55,9 +59,23 @@ namespace Stycue.Api.DTOs.Homepage
         public int LikeCount { get; set; }
 
         /// <summary>
-        /// 留言數
+        /// 目前登入使用者是否已按讚。
+        /// 未登入時不回傳此欄位。
         /// </summary>
-        public int CommentCount { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsLiked { get; set; }
+
+        /// <summary>
+        /// 收藏數
+        /// </summary>
+        public int FavoriteCount { get; set; }
+
+        /// <summary>
+        /// 目前登入使用者是否已收藏。
+        /// 未登入時不回傳此欄位。
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsFavorited { get; set; }
 
         /// <summary>
         /// 圖片列表

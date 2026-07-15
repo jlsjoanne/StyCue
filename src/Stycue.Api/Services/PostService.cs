@@ -405,8 +405,8 @@ namespace Stycue.Api.Services
             response.CommentCount = post.Comments.Count(c => c.DeletedAt == null);
             response.FavoriteCount = post.PostFavorites.Count;
 
-            response.IsLiked = currentUserId.HasValue && post.PostLikes.Any(like => like.UserId == currentUserId.Value);
-            response.IsFavorited = currentUserId.HasValue && post.PostFavorites.Any(f => f.UserId == currentUserId.Value);
+            response.IsLiked = currentUserId.HasValue ? post.PostLikes.Any(like => like.UserId == currentUserId.Value) : null;
+            response.IsFavorited = currentUserId.HasValue ? post.PostFavorites.Any(f => f.UserId == currentUserId.Value) : null;
 
             response.Images = _imageResponseBuilder.BuildList(
                 post.Images.OrderBy(i => i.CreatedAt));

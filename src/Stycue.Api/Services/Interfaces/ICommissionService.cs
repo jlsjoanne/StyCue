@@ -44,10 +44,6 @@ namespace Stycue.Api.Services.Interfaces
             SelectBestCommentRequest request,
             CancellationToken cancellationToken = default);
 
-        // 委託文到期後結算獎勵
-        //Task<ApiResponse<SettleRewardResponse>> SettleRewardAsync(
-        //    int userId,
-        //    int commissionId,
-        //    CancellationToken cancellationToken = default);
+
     }
 }

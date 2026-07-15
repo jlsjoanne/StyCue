@@ -145,9 +145,24 @@ namespace Stycue.Api.DTOs.Commissions
         public int LikeCount { get; set; }
 
         /// <summary>
+        /// 目前登入使用者是否已按讚。
+        /// 未登入時不回傳此欄位。
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsLiked { get; set; }
+
+        /// <summary>
         /// 收藏數
         /// </summary>
         public int FavoriteCount { get; set; }
+
+        /// <summary>
+        /// 目前登入使用者是否已收藏。
+        /// 未登入時不回傳此欄位。
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsFavorited { get; set; }
+
 
         /// <summary>
         /// 委託文圖片清單

@@ -82,15 +82,17 @@ namespace Stycue.Api.DTOs.Posts
 
         /// <summary>
         /// 目前登入使用者是否已按讚。
-        /// 未登入時為 false。
+        /// 未登入時不回傳此欄位。
         /// </summary>
-        public bool IsLiked { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsLiked { get; set; }
 
         /// <summary>
         /// 目前登入使用者是否已收藏。
-        /// 未登入時為 false。
+        /// 未登入時不回傳此欄位。
         /// </summary>
-        public bool IsFavorited { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsFavorited { get; set; }
 
         /// <summary>
         /// 貼文圖片清單。

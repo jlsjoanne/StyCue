@@ -63,6 +63,15 @@ namespace Stycue.Api.Services
                 return ApiResponse<CommissionDetailResponse>.FailResult("找不到指定的委託文", "COMMISSION_NOT_FOUND");
             }
 
+            var isClosed = commission.Status == CommissionStatus.Closed || commission.ClosedAt != null;
+            var isOwner = OwnershipGuard.IsOwner(commission.UserId, userId);
+
+            if(isClosed && !isOwner)
+            {
+                return ApiResponse<CommissionDetailResponse>.FailResult(
+                    "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+            }
+
             var response = BuildCommissionDetailResponse(commission, userId);
 
             return ApiResponse<CommissionDetailResponse>.SuccessResult(response);
@@ -1058,6 +1067,8 @@ namespace Stycue.Api.Services
             response.CommentCount = commission.Comments.Count(c => c.DeletedAt == null);
             response.LikeCount = commission.CommissionLikes.Count;
             response.FavoriteCount = commission.CommissionFavorites.Count;
+            response.IsLiked = currentUserId.HasValue ? commission.CommissionLikes.Any(like => like.UserId == currentUserId.Value) : null;
+            response.IsFavorited = currentUserId.HasValue ? commission.CommissionFavorites.Any(f => f.UserId == currentUserId.Value) : null;
 
             response.Images = BuildOriginalCommissionImages(commission);
             response.Tags = commission.CommissionTags

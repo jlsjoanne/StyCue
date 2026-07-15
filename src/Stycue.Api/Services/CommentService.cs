@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Stycue.Api.Enums;
 using Stycue.Api.Data;
 using AutoMapper;
+using Stycue.Api.Extensions;
 
 namespace Stycue.Api.Services
 {
@@ -33,10 +34,19 @@ namespace Stycue.Api.Services
                     "委託文識別碼不合法", "INVALID_COMMISSION_ID");
             }
 
-            var commissionExist = await _dbContext.Commissions
-                    .AsNoTracking().AnyAsync(c => c.Id == commissionId, cancellationToken);
+            var commission= await _dbContext.Commissions
+                    .AsNoTracking().FirstOrDefaultAsync(c => c.Id == commissionId, cancellationToken);
 
-            if(!commissionExist)
+            if(commission == null)
+            {
+                return ApiResponse<List<CommentResponse>>.FailResult(
+                    "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+            }
+
+            var isClosed = commission.Status == CommissionStatus.Closed || commission.ClosedAt != null;
+            var isOwner = OwnershipGuard.IsOwner(commission.UserId, userId);
+
+            if( isClosed && !isOwner)
             {
                 return ApiResponse<List<CommentResponse>>.FailResult(
                     "找不到指定的委託文", "COMMISSION_NOT_FOUND");
@@ -76,6 +86,12 @@ namespace Stycue.Api.Services
                     "找不到指定的委託文", "COMMISSION_NOT_FOUND");
             }
 
+            if( commission.Status == CommissionStatus.Closed || commission.ClosedAt != null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+            }
+
             if( commission.UserId == userId)
             {
                 return ApiResponse<CommentResponse>.FailResult(
@@ -107,6 +123,54 @@ namespace Stycue.Api.Services
 
             return await CreateRootCommentAsync(userId, postId: null, commissionId: commission.Id,
                 request, cancellationToken);
+        }
+
+        public async Task<ApiResponse<List<CommentResponse>>> GetPostCommentsAsync(
+            int? userId, int postId, CancellationToken cancellationToken = default)
+        {
+            if (postId <= 0)
+            {
+                return ApiResponse<List<CommentResponse>>.FailResult(
+                    "貼文識別碼不合法", "INVALID_POST_ID");
+            }
+
+            var postExist = await _dbContext.Posts
+                    .AsNoTracking().AnyAsync(p => p.Id == postId && p.DeletedAt == null, cancellationToken);
+
+            if (!postExist)
+            {
+                return ApiResponse<List<CommentResponse>>.FailResult(
+                    "找不到指定的貼文", "POST_NOT_FOUND");
+            }
+
+            return await GetCommentsAsync(
+                userId, postId, commissionId: null, cancellationToken);
+        }
+
+        public async Task<ApiResponse<CommentResponse>> CreateForPostAsync(
+            int userId, int postId, UpsertCommentRequest request, CancellationToken cancellationToken = default)
+        {
+            if(userId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的使用者 ID", "INVALID_USER_ID");
+            }
+
+            if(postId <= 0)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "不合法的貼文ID", "INVALID_POST_ID");
+            }
+
+            var post = await _dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId && p.DeletedAt == null, cancellationToken);
+
+            if (post == null)
+            {
+                return ApiResponse<CommentResponse>.FailResult(
+                    "找不到指定的貼文", "POST_NOT_FOUND");
+            }
+
+            return await CreateRootCommentAsync(userId, post.Id, null, request, cancellationToken);
         }
 
         public async Task<ApiResponse<CommentResponse>> ReplyAsync(
@@ -148,6 +212,31 @@ namespace Stycue.Api.Services
             {
                 return ApiResponse<CommentResponse>.FailResult(
                     "留言目標不合法", "INVALID_COMMENT_TARGET");
+            }
+
+            if(parentComment.PostId.HasValue)
+            {
+                var postExists = await _dbContext.Posts.AsNoTracking()
+                    .AnyAsync(p => p.Id == parentComment.PostId.Value && p.DeletedAt == null, cancellationToken);
+
+                if(!postExists)
+                {
+                    return ApiResponse<CommentResponse>.FailResult(
+                        "找不到指定的貼文", "POST_NOT_FOUND");
+                }
+            }
+
+            if(parentComment.CommissionId.HasValue)
+            {
+                var commissionExists = await _dbContext.Commissions.AsNoTracking()
+                    .AnyAsync(c => c.Id == parentComment.CommissionId.Value &&
+                        c.Status != CommissionStatus.Closed && c.ClosedAt == null, cancellationToken);
+
+                if(!commissionExists)
+                {
+                    return ApiResponse<CommentResponse>.FailResult(
+                        "找不到指定的委託文", "COMMISSION_NOT_FOUND");
+                }
             }
 
             var content = NormalizeContent(request.Content);
@@ -300,21 +389,6 @@ namespace Stycue.Api.Services
             return ApiResponse<object>.SuccessResult(new { commentId = comment.Id }, "留言已刪除");
         }
 
-        // --------------------------
-        // 貼文待做
-        public async Task<ApiResponse<List<CommentResponse>>> GetPostCommentsAsync(
-            int? userId, int postId, CancellationToken cancellationToken = default)
-        {
-            // place holder
-            return ApiResponse<List<CommentResponse>>.FailResult("place holder", "PLACE_HOLDER");
-        }
-
-        public async Task<ApiResponse<CommentResponse>> CreateForPostAsync(
-            int userId, int postId, UpsertCommentRequest request, CancellationToken cancellationToken = default)
-        {
-            // place holder
-            return ApiResponse<CommentResponse>.FailResult("place holder", "PLACE_HOLDER");
-        }
 
 
 
@@ -338,7 +412,7 @@ namespace Stycue.Api.Services
             }
 
             return query
-                .Include(c => c.User)
+                .Include(c => c.User).ThenInclude(u => u.AvatarImage)
                 .Include(c => c.Images).ThenInclude(i => i.FashionMetadata)
                 .Include(c => c.CommentLikes)
                 .Include(c => c.Replies.Where(r => r.DeletedAt == null)).ThenInclude(r => r.User)
@@ -488,8 +562,7 @@ namespace Stycue.Api.Services
             response.CanEdit = currentUserId.HasValue && CanEditComment(comment, currentUserId.Value);
             response.CanDelete = currentUserId.HasValue && CanDeleteComment(comment, currentUserId.Value);
             response.LikeCount = likes.Count;
-            response.IsLiked = currentUserId.HasValue &&
-                likes.Any(like => like.UserId == currentUserId.Value);
+            response.IsLiked = currentUserId.HasValue ? likes.Any(like => like.UserId == currentUserId.Value) : null;
             response.Images = _imageResponseBuilder.BuildList(images);
 
 

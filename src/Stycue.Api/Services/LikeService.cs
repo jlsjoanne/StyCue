@@ -3,6 +3,7 @@ using Stycue.Api.Data;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Likes;
 using Stycue.Api.Entities;
+using Stycue.Api.Enums;
 using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Services
@@ -34,10 +35,15 @@ namespace Stycue.Api.Services
                 return commentIdError;
             }
 
-            var comment = await _dbContext.Comments.AsNoTracking()
-                .FirstOrDefaultAsync(c => c.Id == commentId && c.DeletedAt == null, cancellationToken);
+            var comment = await FindActiveCommentAsync(commentId, cancellationToken);
 
             if(comment == null)
+            {
+                return ApiResponse<LikeResponse>.FailResult(
+                    "找不到指定的留言", "COMMENT_NOT_FOUND");
+            }
+
+            if( !await ActiveCommentTargetExistsAsync(comment, cancellationToken))
             {
                 return ApiResponse<LikeResponse>.FailResult(
                     "找不到指定的留言", "COMMENT_NOT_FOUND");
@@ -86,8 +92,15 @@ namespace Stycue.Api.Services
                 return commentIdError;
             }
 
-            var commentExists = await ActiveCommentExistsAsync(commentId, cancellationToken);
-            if (!commentExists)
+            var comment = await FindActiveCommentAsync(commentId, cancellationToken);
+
+            if (comment == null)
+            {
+                return ApiResponse<LikeResponse>.FailResult(
+                    "找不到指定的留言", "COMMENT_NOT_FOUND");
+            }
+
+            if (!await ActiveCommentTargetExistsAsync(comment, cancellationToken))
             {
                 return ApiResponse<LikeResponse>.FailResult(
                     "找不到指定的留言", "COMMENT_NOT_FOUND");
@@ -194,15 +207,84 @@ namespace Stycue.Api.Services
         public async Task<ApiResponse<LikeResponse>> LikePostAsync(
             int userId, int postId, CancellationToken cancellationToken)
         {
-            return ApiResponse<LikeResponse>.FailResult(
-                "貼文按讚功能尚未實作", "POST_LIKE_NOT_IMPLEMENTED");
+            if(ValidateUserId(userId) is { } userError)
+            {
+                return userError;
+            }
+
+            if(ValidateTargetId(postId, "不合法的貼文 ID", "INVALID_POST_ID") is { } postError)
+            {
+                return postError;
+            }
+
+            var postExist = await PostExistsAsync(postId, cancellationToken);
+
+            if (!postExist)
+            {
+                return ApiResponse<LikeResponse>.FailResult(
+                    "找不到指定的貼文", "POST_NOT_FOUND");
+            }
+
+            var alreadyLiked = await _dbContext.PostLikes
+                .AnyAsync(like => like.PostId == postId && like.UserId == userId, cancellationToken);
+
+            if(!alreadyLiked)
+            {
+                _dbContext.PostLikes.Add(new PostLike
+                {
+                    PostId = postId,
+                    UserId = userId,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            var likeCount = await _dbContext.PostLikes
+                .CountAsync(like => like.PostId == postId, cancellationToken);
+
+            var response = BuildResponse(PostTargetType, postId, isLiked: true, likeCount);
+
+            return ApiResponse<LikeResponse>.SuccessResult(response, "貼文按讚成功");
         }
 
         public async Task<ApiResponse<LikeResponse>> UnlikePostAsync(
             int userId, int postId, CancellationToken cancellationToken)
         {
-            return ApiResponse<LikeResponse>.FailResult(
-                "貼文取消按讚功能尚未實作", "POST_UNLIKE_NOT_IMPLEMENTED");
+            if(ValidateUserId(userId) is { } userError)
+            {
+                return userError;
+            }
+
+            if (ValidateTargetId(postId, "不合法的貼文 ID", "INVALID_POST_ID") is { } postError)
+            {
+                return postError;
+            }
+
+            var postExist = await PostExistsAsync(postId, cancellationToken);
+
+            if (!postExist)
+            {
+                return ApiResponse<LikeResponse>.FailResult(
+                    "找不到指定的貼文", "POST_NOT_FOUND");
+            }
+
+            var existingLike = await _dbContext.PostLikes
+                .FirstOrDefaultAsync(like => like.PostId == postId && like.UserId == userId, cancellationToken);
+
+            if (existingLike != null)
+            {
+                _dbContext.PostLikes.Remove(existingLike);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            var likeCount = await _dbContext.PostLikes
+                .CountAsync(like => like.PostId == postId, cancellationToken);
+
+            var response = BuildResponse(PostTargetType, postId, false, likeCount);
+
+            return ApiResponse<LikeResponse>.SuccessResult(response, "貼文已取消按讚");
+
         }
 
 
@@ -235,18 +317,45 @@ namespace Stycue.Api.Services
             return targetId > 0 ? null : ApiResponse<LikeResponse>.FailResult(message, errorCode);
         }
 
-        private async Task<bool> ActiveCommentExistsAsync(
+        private async Task<Comment?> FindActiveCommentAsync(
             int commentId, CancellationToken cancellationToken)
         {
             return await _dbContext.Comments.AsNoTracking()
-                .AnyAsync(c => c.Id == commentId && c.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(c => c.Id == commentId && c.DeletedAt == null, cancellationToken);
+        }
+
+        private async Task<bool> ActiveCommentTargetExistsAsync(
+            Comment comment, CancellationToken cancellationToken)
+        {
+            if(comment.PostId.HasValue)
+            {
+                return await _dbContext.Posts.AsNoTracking()
+                    .AnyAsync(p => p.Id == comment.PostId.Value && p.DeletedAt == null, cancellationToken);
+            }
+
+            if (comment.CommissionId.HasValue)
+            {
+                return await _dbContext.Commissions.AsNoTracking()
+                    .AnyAsync(c => c.Id == comment.CommissionId.Value && c.Status != CommissionStatus.Closed &&
+                        c.ClosedAt == null, cancellationToken);
+            }
+
+            return false;
         }
 
         private async Task<bool> CommissionExistsAsync(
             int commissionId, CancellationToken cancellationToken)
         {
             return await _dbContext.Commissions.AsNoTracking()
-                .AnyAsync(c => c.Id == commissionId, cancellationToken);
+                .AnyAsync(c => c.Id == commissionId && 
+                    c.Status != CommissionStatus.Closed && c.ClosedAt == null, cancellationToken);
+        }
+
+        private async Task<bool> PostExistsAsync(
+            int postId, CancellationToken cancellationToken)
+        {
+            return await _dbContext.Posts.AsNoTracking()
+                .AnyAsync(p => p.Id == postId && p.DeletedAt == null, cancellationToken);
         }
     }
 }

@@ -12,10 +12,14 @@ namespace Stycue.Api.Controllers
     /// </summary>
     /// <remarks>
     /// 提供首頁混合列表查詢，回傳分享文、提問文與委託文的列表資料。
-    /// 目前第一階段已支援委託文列表；分享文與提問文尚未實作時，filter=postShare 或 filter=postAsk 會回傳成功且 items 為空集合。
     ///
     /// 可未登入查詢。
-    /// 若使用者已登入，後續可依登入使用者補充個人化狀態欄位。
+    /// 若使用者已登入，回應會包含目前使用者是否已按讚與是否已收藏。
+    ///
+    /// 回應項目包含：
+    /// itemType、itemId、author、title、contentPreview、createdAt、updatedAt、commentCount、likeCount、isLiked、favoriteCount、isFavorited、images、tags。
+    /// 貼文項目會回傳 postType。
+    /// 委託文項目會回傳 commissionStatus、commissionPoints、expiredAt。
     ///
     /// 支援排序：
     /// - latest：依建立時間由新到舊排序。
@@ -23,11 +27,13 @@ namespace Stycue.Api.Controllers
     /// - mostComments：第一層依留言數由高到低排序，第二層依 UpdatedAt 由新到舊排序；若 UpdatedAt 為 null，則使用 CreatedAt。
     ///
     /// 支援篩選：
-    /// - all：回傳所有首頁項目。目前會回傳委託文，Post 尚未實作前分享文與提問文為空。
+    /// - all：回傳分享文、提問文與委託文。
     /// - commission：只回傳委託文。
-    /// - postShare：只回傳分享文；目前 Post 尚未實作時回傳空集合。
-    /// - postAsk：只回傳提問文；目前 Post 尚未實作時回傳空集合。
+    /// - postShare：只回傳分享文。
+    /// - postAsk：只回傳提問文。
     ///
+    /// 已刪除的貼文不會出現在首頁。
+    /// 已提前關閉的委託文不會出現在首頁。
     /// 未帶 sortBy 時，預設使用 mostLikes。
     /// 未帶 filter 時，預設使用 all。
     /// page 小於 1 時會修正為 1；pageSize 小於 1 時會修正為預設值，超過上限時會修正為系統最大值。
@@ -50,6 +56,7 @@ namespace Stycue.Api.Controllers
         /// <remarks>
         /// 依指定排序、篩選與分頁條件查詢首頁列表。
         /// 首頁列表項目會以 itemType 標示資料類型，前端可依 itemType 決定導向委託文詳情或貼文詳情。
+        /// 若使用者已登入，首頁項目會依目前使用者回傳 isLiked 與 isFavorited。
         /// </remarks>
         /// <param name="request">首頁列表查詢條件，包含 sortBy、filter、page 與 pageSize</param>
         /// <param name="cancellationToken">Request 取消通知</param>

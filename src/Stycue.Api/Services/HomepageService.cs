@@ -2,7 +2,6 @@
 using Stycue.Api.Data;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Homepage;
-using Stycue.Api.DTOs.Likes;
 using Stycue.Api.Enums;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Extensions;
@@ -58,7 +57,7 @@ namespace Stycue.Api.Services
                 }
               
                 // 順序: build items by filter, then sort and page
-                var response = await BuildHomepageResponseAsync(filter, sortBy, page, pageSize, cancellationToken);
+                var response = await BuildHomepageResponseAsync(userId, filter, sortBy, page, pageSize, cancellationToken);
 
                 return ApiResponse<PagedResponse<HomepageItemResponse>>.SuccessResult(
                     response, "首頁列表查詢成功");
@@ -168,28 +167,39 @@ namespace Stycue.Api.Services
         // homepage item to list: BuildCommissionHomepageItemAsync, BuildPostHomepageItemAsync
 
         private async Task<List<HomepageItemResponse>> BuildCommissionHomepageItemsAsync(
-            CancellationToken cancellationToken)
+            int? currentUserId, CancellationToken cancellationToken)
         {
             var commissions = await _dbContext.Commissions
                 .AsNoTracking().AsSplitQuery()
+                .Where(c => c.Status != CommissionStatus.Closed && c.ClosedAt == null)
                 .Include(c => c.User).ThenInclude(u => u.AvatarImage)
                 .Include(c => c.Images).ThenInclude(i => i.FashionMetadata)
                 .Include(c => c.CommissionTags).ThenInclude(ct => ct.Tag)
                 .Include(c => c.CommissionLikes)
+                .Include(c => c.CommissionFavorites)
                 .Include(c => c.Comments).ToListAsync(cancellationToken);
 
-            return commissions.Select(BuildCommissionHomepageItem).ToList();
+            return commissions.Select(commission => BuildCommissionHomepageItem(commission, currentUserId)).ToList();
         }
 
-        // place holder 等post做完待補 之後要呼叫dbContext 前面要改成 await
-        private Task<List<HomepageItemResponse>> BuildPostHomepageItemsAsync(
-            PostType postType, CancellationToken cancellationToken)
+        private async Task<List<HomepageItemResponse>> BuildPostHomepageItemsAsync(
+            int? currentUserId, PostType postType, CancellationToken cancellationToken)
         {
-            return Task.FromResult(new List<HomepageItemResponse>());
+            var posts = await _dbContext.Posts.AsNoTracking().AsSplitQuery()
+                .Where(p => p.DeletedAt == null && p.PostType == postType)
+                .Include(p => p.User).ThenInclude(u => u.AvatarImage)
+                .Include(p => p.Images).ThenInclude(i => i.FashionMetadata)
+                .Include(p => p.PostTags).ThenInclude(pt => pt.Tag)
+                .Include(p => p.PostLikes)
+                .Include(p => p.PostFavorites)
+                .Include(p => p.Comments)
+                .ToListAsync(cancellationToken);
+
+            return posts.Select(post => BuildPostHomepageItem(post, currentUserId)).ToList();
         }
 
         // Build homepage item: BuildCommissionHomepageItem, BuildPostHomepageItem
-        private HomepageItemResponse BuildCommissionHomepageItem(Commission commission)
+        private HomepageItemResponse BuildCommissionHomepageItem(Commission commission, int? currentUserId)
         {
             return new HomepageItemResponse
             {
@@ -201,6 +211,9 @@ namespace Stycue.Api.Services
                 CreatedAt = commission.CreatedAt,
                 UpdatedAt = commission.UpdatedAt,
                 LikeCount = commission.CommissionLikes.Count,
+                IsLiked = currentUserId.HasValue ? commission.CommissionLikes.Any(l => l.UserId == currentUserId.Value) : null,
+                FavoriteCount = commission.CommissionFavorites.Count,
+                IsFavorited = currentUserId.HasValue ? commission.CommissionFavorites.Any(f => f.UserId == currentUserId.Value) : null,
                 CommentCount = commission.Comments.Count(c => c.DeletedAt == null),
                 Images = _imageResponseBuilder.BuildList(
                     commission.Images.Where(i => i.DeletedAt == null && i.CommissionRepostId == null)
@@ -214,8 +227,30 @@ namespace Stycue.Api.Services
             };
         }
 
-        // 待補
-        // private HomepageItemResponse BuildPostHomepageItem(Post post)
+        private HomepageItemResponse BuildPostHomepageItem(Post post, int? currentUserId)
+        {
+            return new HomepageItemResponse
+            {
+                ItemType = post.PostType == PostType.Share ? HomepageItemType.PostShare : HomepageItemType.PostAsk,
+                ItemId = post.Id,
+                Author = _userSummaryResponseBuilder.Build(post.User),
+                Title = post.Title,
+                ContentPreview = BuildContentPreview(post.Content),
+                CreatedAt = post.CreatedAt,
+                UpdatedAt = post.UpdatedAt,
+                CommentCount = post.Comments.Count(c => c.DeletedAt == null),
+                LikeCount = post.PostLikes.Count,
+                IsLiked = currentUserId.HasValue ? post.PostLikes.Any(like => like.UserId == currentUserId.Value) : null,
+                FavoriteCount = post.PostFavorites.Count,
+                IsFavorited = currentUserId.HasValue ? post.PostFavorites.Any(f => f.UserId == currentUserId.Value) : null,
+                Images = _imageResponseBuilder.BuildList(post.Images.Where(i => i.DeletedAt == null).OrderBy(i => i.CreatedAt)),
+                Tags = post.PostTags.OrderBy(pt => pt.Tag.Name).Select(pt => _mapper.Map<TagResponse>(pt.Tag)).ToList(),
+                PostType = post.PostType,
+                CommissionStatus = null,
+                CommissionPoints = null,
+                ExpiredAt = null
+            };
+        }
 
         // Sorting
         private static IEnumerable<HomepageItemResponse> ApplyHomepageSorting(
@@ -239,21 +274,21 @@ namespace Stycue.Api.Services
 
         // Build Response
         private async Task<PagedResponse<HomepageItemResponse>> BuildHomepageResponseAsync(
-            HomepageFilter filter, HomepageSortBy sortBy, int page, int pageSize, CancellationToken cancellationToken)
+            int? currentUserId, HomepageFilter filter, HomepageSortBy sortBy, int page, int pageSize, CancellationToken cancellationToken)
         {
             var items = new List<HomepageItemResponse>();
 
             if(filter is HomepageFilter.All or HomepageFilter.Commission)
             {
-                items.AddRange(await BuildCommissionHomepageItemsAsync(cancellationToken));
+                items.AddRange(await BuildCommissionHomepageItemsAsync(currentUserId, cancellationToken));
             }
             if(filter is HomepageFilter.All or HomepageFilter.PostShare)
             {
-                items.AddRange(await BuildPostHomepageItemsAsync( PostType.Share, cancellationToken));
+                items.AddRange(await BuildPostHomepageItemsAsync(currentUserId, PostType.Share, cancellationToken));
             }
             if(filter is HomepageFilter.All or HomepageFilter.PostAsk)
             {
-                items.AddRange(await BuildPostHomepageItemsAsync( PostType.Question, cancellationToken));
+                items.AddRange(await BuildPostHomepageItemsAsync(currentUserId, PostType.Question, cancellationToken));
             }
 
             var sortedItems = ApplyHomepageSorting(items, sortBy).ToList();

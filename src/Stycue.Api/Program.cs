@@ -54,6 +54,17 @@ namespace Stycue.Api
                         new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
                 });
 
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var response = ApiResponse<object>.FailResult(
+                        "請求資料驗證失敗", "VALIDATION_FAILED");
+
+                    return new BadRequestObjectResult(response);
+                };
+            });
+
             // Set Multipart form upload limit
             builder.Services.Configure<FormOptions>(options =>
             {
@@ -189,6 +200,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<ILikeService, LikeService>();
             builder.Services.AddScoped<IHomepageService, HomepageService>();
             builder.Services.AddScoped<IPostService, PostService>();
+            builder.Services.AddScoped<IFavoriteService, FavoriteService>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

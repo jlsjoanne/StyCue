@@ -75,9 +75,11 @@ namespace Stycue.Api.DTOs.Comments
         public int LikeCount { get; set; }
 
         /// <summary>
-        /// 目前登入使用者是否已按讚
+        /// 目前登入使用者是否已按讚。
+        /// 未登入時不回傳此欄位。
         /// </summary>
-        public bool IsLiked { get; set; } = false;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsLiked { get; set; }
 
         /// <summary>
         /// 留言圖片清單
