@@ -7,6 +7,11 @@ namespace Stycue.Api.Services.Interfaces
     {
         UserSummaryResponse Build(User user);
 
+        UserSummaryResponse Build(User user, int? currentUserId, ISet<int> followedUserIds);
+
         IReadOnlyList<UserSummaryResponse> BuildList(IEnumerable<User> users);
+
+        IReadOnlyList<UserSummaryResponse> BuildList(
+            IEnumerable<User> users, int? currentUserId, ISet<int> followedUserIds);
     }
 }

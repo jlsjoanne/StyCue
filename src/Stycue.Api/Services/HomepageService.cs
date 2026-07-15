@@ -18,14 +18,20 @@ namespace Stycue.Api.Services
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
         private readonly ILogger<HomepageService> _logger;
+        private readonly IFollowService _followService;
 
-        public HomepageService(AppDbContext dbContext, IImageResponseBuilder imageResponseBuilder, IUserSummaryResponseBuilder userSummaryResponseBuilder, IMapper mapper, ILogger<HomepageService> logger)
+        public HomepageService(AppDbContext dbContext,
+            IImageResponseBuilder imageResponseBuilder,
+            IUserSummaryResponseBuilder userSummaryResponseBuilder,
+            IMapper mapper, ILogger<HomepageService> logger,
+            IFollowService followService)
         {
             _dbContext = dbContext;
             _imageResponseBuilder = imageResponseBuilder;
             _userSummaryResponseBuilder = userSummaryResponseBuilder;
             _mapper = mapper;
             _logger = logger;
+            _followService = followService;
         }
 
         public async Task<ApiResponse<PagedResponse<HomepageItemResponse>>> GetHomepageAsync(
@@ -272,6 +278,36 @@ namespace Stycue.Api.Services
             };
         }
 
+        // Fill if following into Homepage Response
+        private async Task FillAuthorFollowingAsync(
+            List<HomepageItemResponse> items, int? currentUserId, CancellationToken cancellationToken)
+        {
+            if (!currentUserId.HasValue || items.Count == 0)
+            {
+                return;
+            }
+
+            var authorIds = items
+                .Select(item => item.Author.UserId)
+                .Where(authorId => authorId != currentUserId.Value)
+                .Distinct().ToList();
+
+            if(authorIds.Count == 0)
+            {
+                return;
+            }
+
+            var followedAuthorIds = await _followService.GetFollowedUserIdsAsync(
+                currentUserId, authorIds, cancellationToken);
+
+            foreach(var item in items)
+            {
+                item.Author.IsFollowing = item.Author.UserId == currentUserId.Value
+                        ? null : followedAuthorIds.Contains(item.Author.UserId);
+            }
+
+        }
+
         // Build Response
         private async Task<PagedResponse<HomepageItemResponse>> BuildHomepageResponseAsync(
             int? currentUserId, HomepageFilter filter, HomepageSortBy sortBy, int page, int pageSize, CancellationToken cancellationToken)
@@ -294,6 +330,8 @@ namespace Stycue.Api.Services
             var sortedItems = ApplyHomepageSorting(items, sortBy).ToList();
 
             var pagedItems = sortedItems.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+            await FillAuthorFollowingAsync(pagedItems, currentUserId, cancellationToken);
 
             return new PagedResponse<HomepageItemResponse>
             {
