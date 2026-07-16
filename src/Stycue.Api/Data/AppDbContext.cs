@@ -280,6 +280,9 @@ namespace Stycue.Api.Data
 
                 entity.Property(x => x.Height).HasPrecision(5, 2);
                 entity.Property(x => x.Weight).HasPrecision(5, 2);
+
+                entity.Property(x => x.Gender)
+                    .HasConversion<int>();
             });
         }
     }

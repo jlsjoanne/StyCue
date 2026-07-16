@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Stycue.Api.Enums;
+using System.ComponentModel.DataAnnotations;
 
 namespace Stycue.Api.Entities
 {
@@ -13,6 +14,9 @@ namespace Stycue.Api.Entities
 
         [MaxLength(500)]
         public string? Bio { get; set; }
+
+        public GenderIdentity? Gender { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
     }
