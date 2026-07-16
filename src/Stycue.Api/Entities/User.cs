@@ -29,6 +29,8 @@ namespace Stycue.Api.Entities
 
         public bool IsEmailVerified { get; set; } = false;
 
+        public UserProfile? Profile { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? UpdatedAt { get; set; }
