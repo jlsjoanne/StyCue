@@ -23,7 +23,7 @@ namespace Stycue.Api.Controllers
     ///
     /// 支援排序：
     /// - latest：依建立時間由新到舊排序。
-    /// - mostLikes：第一層依按讚數由高到低排序，第二層依 UpdatedAt 由新到舊排序；若 UpdatedAt 為 null，則使用 CreatedAt。
+    /// - highestCommissionPoints：熱門委託排序，只回傳委託文，第一層依委託積分由高到低排序，第二層依 UpdatedAt 由新到舊排序；若 UpdatedAt 為 null，則使用 CreatedAt。
     /// - mostComments：第一層依留言數由高到低排序，第二層依 UpdatedAt 由新到舊排序；若 UpdatedAt 為 null，則使用 CreatedAt。
     ///
     /// 支援篩選：
@@ -34,7 +34,7 @@ namespace Stycue.Api.Controllers
     ///
     /// 已刪除的貼文不會出現在首頁。
     /// 已提前關閉的委託文不會出現在首頁。
-    /// 未帶 sortBy 時，預設使用 mostLikes。
+    /// 未帶 sortBy 時，預設使用 mostComments。
     /// 未帶 filter 時，預設使用 all。
     /// page 小於 1 時會修正為 1；pageSize 小於 1 時會修正為預設值，超過上限時會修正為系統最大值。
     /// </remarks>

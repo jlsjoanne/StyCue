@@ -29,6 +29,10 @@ namespace Stycue.Api.Data
         public DbSet<PointTransaction> PointTransactions => Set<PointTransaction>();
         public DbSet<DailyPointClaim> DailyPointClaims => Set<DailyPointClaim>();
 
+        public DbSet<UserFollow> UserFollows => Set<UserFollow>();
+
+        public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -244,6 +248,41 @@ namespace Stycue.Api.Data
                     .WithMany()
                     .HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<UserFollow>(entity =>
+            {
+                entity.HasKey(x => new { x.FollowerUserId, x.FollowingUserId });
+                
+                entity.HasIndex(x => x.FollowingUserId);
+
+                entity.HasOne(x => x.FollowerUser)
+                    .WithMany()
+                    .HasForeignKey(x => x.FollowerUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(x => x.FollowingUser)
+                    .WithMany()
+                    .HasForeignKey(x => x.FollowingUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.ToTable(t => t.HasCheckConstraint("CK_UserFollows_NotSelf", "[FollowerUserId] <> [FollowingUserId]"));
+            });
+
+            modelBuilder.Entity<UserProfile>(entity =>
+            {
+                entity.HasKey(x => x.UserId);
+
+                entity.HasOne(x => x.User)
+                    .WithOne(x => x.Profile)
+                    .HasForeignKey<UserProfile>(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.Property(x => x.Height).HasPrecision(5, 2);
+                entity.Property(x => x.Weight).HasPrecision(5, 2);
+
+                entity.Property(x => x.Gender)
+                    .HasConversion<int>();
             });
         }
     }
