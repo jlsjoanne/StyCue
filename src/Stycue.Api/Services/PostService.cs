@@ -17,13 +17,15 @@ namespace Stycue.Api.Services
         private readonly AppDbContext _dbContext;
         private readonly ITagService _tagService;
         private readonly IImageService _imageService;
+        private readonly IFollowService _followService;
         private readonly IImageResponseBuilder _imageResponseBuilder;
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
         private readonly ILogger<PostService> _logger;
 
+
         public PostService(
-            AppDbContext dbContext, ITagService tagService, IImageService imageService, 
+            AppDbContext dbContext, ITagService tagService, IImageService imageService, IFollowService followService,
             IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder, 
             IMapper mapper, ILogger<PostService> logger)
@@ -31,6 +33,7 @@ namespace Stycue.Api.Services
             _dbContext = dbContext;
             _tagService = tagService;
             _imageService = imageService;
+            _followService = followService;
             _imageResponseBuilder = imageResponseBuilder;
             _userSummaryResponseBuilder = userSummaryResponseBuilder;
             _mapper = mapper;
@@ -115,6 +118,9 @@ namespace Stycue.Api.Services
             }
 
             var response = BuildPostDetailResponse(post, userId);
+
+            response.Author.IsFollowing = await _followService.IsFollowingAsync(
+                userId, post.UserId, cancellationToken);
 
             return ApiResponse<PostDetailResponse>.SuccessResult(response, "取得貼文成功");
         }

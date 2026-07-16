@@ -201,6 +201,9 @@ namespace Stycue.Api
             builder.Services.AddScoped<IHomepageService, HomepageService>();
             builder.Services.AddScoped<IPostService, PostService>();
             builder.Services.AddScoped<IFavoriteService, FavoriteService>();
+            builder.Services.AddScoped<IFollowService, FollowService>();
+            builder.Services.AddScoped<IUserService, UserService>();
+            builder.Services.AddScoped<IHomepageItemResponseBuilder, HomepageItemResponseBuilder>();
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

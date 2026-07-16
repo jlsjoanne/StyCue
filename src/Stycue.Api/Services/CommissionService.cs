@@ -21,6 +21,7 @@ namespace Stycue.Api.Services
         private readonly ITagService _tagService;
         private readonly IPointService _pointService;
         private readonly IImageService _imageService;
+        private readonly IFollowService _followService;
         private readonly IImageResponseBuilder _imageResponseBuilder;
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
@@ -28,7 +29,7 @@ namespace Stycue.Api.Services
         private readonly ILogger<CommissionService> _logger;
 
         public CommissionService(
-            AppDbContext dbContext, ITagService tagService, IPointService pointService, 
+            AppDbContext dbContext, ITagService tagService, IPointService pointService, IFollowService followService,
             IImageService imageService, IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder,
             IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger)
@@ -37,6 +38,7 @@ namespace Stycue.Api.Services
             _tagService = tagService;
             _pointService = pointService;
             _imageService = imageService;
+            _followService = followService;
             _imageResponseBuilder = imageResponseBuilder;
             _userSummaryResponseBuilder = userSummaryResponseBuilder;
             _mapper = mapper;
@@ -73,6 +75,9 @@ namespace Stycue.Api.Services
             }
 
             var response = BuildCommissionDetailResponse(commission, userId);
+
+            response.Author.IsFollowing = await _followService.IsFollowingAsync(
+                userId, commission.UserId, cancellationToken);
 
             return ApiResponse<CommissionDetailResponse>.SuccessResult(response);
         }

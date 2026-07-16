@@ -28,9 +28,39 @@ namespace Stycue.Api.Services
             return response;
         }
 
+        public UserSummaryResponse Build(User user, int? currentUserId, ISet<int> followedUserIds)
+        {
+            var response = Build(user);
+
+            response.IsFollowing = ResolveIsFollowing(user.Id, currentUserId, followedUserIds);
+
+            return response;
+        }
+
         public IReadOnlyList<UserSummaryResponse> BuildList(IEnumerable<User> users)
         {
             return users.Select(Build).ToList();
+        }
+
+        public IReadOnlyList<UserSummaryResponse> BuildList(
+            IEnumerable<User> users, int? currentUserId, ISet<int> followedUserIds)
+        {
+            return users.Select(user => Build(user, currentUserId, followedUserIds)).ToList();
+        }
+
+        private static bool? ResolveIsFollowing(int targetUserId, int? currentUserId, ISet<int> followedUserIds)
+        {
+            if (!currentUserId.HasValue)
+            {
+                return null;
+            }
+
+            if(targetUserId == currentUserId.Value)
+            {
+                return null;
+            }
+
+            return followedUserIds.Contains(targetUserId);
         }
     }
 }
