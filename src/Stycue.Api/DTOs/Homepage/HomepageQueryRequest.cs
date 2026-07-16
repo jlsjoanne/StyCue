@@ -9,10 +9,10 @@ namespace Stycue.Api.DTOs.Homepage
     {
         /// <summary>
         /// 排序方式
-        /// 可用值：latest、mostLikes、mostComments
+        /// 可用值：latest、highestCommissionPoints、mostComments
         /// </summary>
-        /// <example>mostLikes</example>
-        public string SortBy { get; set; } = "mostLikes";
+        /// <example>mostComments</example>
+        public string SortBy { get; set; } = "mostComments";
 
         /// <summary>
         /// 篩選類型

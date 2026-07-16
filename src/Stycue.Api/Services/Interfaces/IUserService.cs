@@ -31,7 +31,12 @@ namespace Stycue.Api.Services.Interfaces
 
         Task<ApiResponse<PagedResponse<HomepageItemResponse>>> GetMyPostsAsync(
             int currentUserId,
-            UserContentQueryRequest request,
+            PagedQueryRequest request,
+            CancellationToken cancellationToken = default);
+
+        Task<ApiResponse<PagedResponse<HomepageItemResponse>>> GetMyCommissionsAsync(
+            int currentUserId,
+            PagedQueryRequest request,
             CancellationToken cancellationToken = default);
 
         Task<ApiResponse<PagedResponse<HomepageItemResponse>>> GetMySavedPostsAsync(

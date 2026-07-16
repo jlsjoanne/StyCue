@@ -83,7 +83,7 @@ namespace Stycue.Api.Services
         private static ApiResponse<PagedResponse<HomepageItemResponse>>? TryParseSortBy(
             string? value, out HomepageSortBy sortBy)
         {
-            var normalized = string.IsNullOrWhiteSpace(value) ? "mostLikes" : value.Trim();
+            var normalized = string.IsNullOrWhiteSpace(value) ? "mostComments" : value.Trim();
 
             switch (normalized)
             {
@@ -91,13 +91,14 @@ namespace Stycue.Api.Services
                     sortBy = HomepageSortBy.Latest;
                     return null;
                 case "mostLikes":
-                    sortBy = HomepageSortBy.MostLikes;
+                case "highestCommissionPoints":
+                    sortBy = HomepageSortBy.HighestCommissionPoints;
                     return null;
                 case "mostComments":
                     sortBy = HomepageSortBy.MostComments;
                     return null;
                 default:
-                    sortBy = HomepageSortBy.MostLikes;
+                    sortBy = HomepageSortBy.MostComments;
                     return ApiResponse<PagedResponse<HomepageItemResponse>>.FailResult(
                         "不支援的排序方式", "INVALID_SORT_BY");
             }
@@ -174,8 +175,8 @@ namespace Stycue.Api.Services
             {
                 HomepageSortBy.Latest => items.OrderByDescending(item => item.CreatedAt),
                 
-                HomepageSortBy.MostLikes => items
-                    .OrderByDescending(item => item.LikeCount)
+                HomepageSortBy.HighestCommissionPoints => items
+                    .OrderByDescending(item => item.CommissionPoints ?? 0)
                         .ThenByDescending(item => item.UpdatedAt ?? item.CreatedAt),
 
                 HomepageSortBy.MostComments => items
@@ -222,15 +223,18 @@ namespace Stycue.Api.Services
         {
             var items = new List<HomepageItemResponse>();
 
-            if(filter is HomepageFilter.All or HomepageFilter.Commission)
+            var effectiveFilter = sortBy == HomepageSortBy.HighestCommissionPoints
+                ? HomepageFilter.Commission : filter;
+
+            if(effectiveFilter is HomepageFilter.All or HomepageFilter.Commission)
             {
                 items.AddRange(await BuildCommissionHomepageItemsAsync(currentUserId, cancellationToken));
             }
-            if(filter is HomepageFilter.All or HomepageFilter.PostShare)
+            if(effectiveFilter is HomepageFilter.All or HomepageFilter.PostShare)
             {
                 items.AddRange(await BuildPostHomepageItemsAsync(currentUserId, PostType.Share, cancellationToken));
             }
-            if(filter is HomepageFilter.All or HomepageFilter.PostAsk)
+            if(effectiveFilter is HomepageFilter.All or HomepageFilter.PostAsk)
             {
                 items.AddRange(await BuildPostHomepageItemsAsync(currentUserId, PostType.Question, cancellationToken));
             }
