@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Stycue.Api.Entities;
+using Stycue.Api.Enums;
 
 namespace Stycue.Api.Data
 {
@@ -32,6 +33,8 @@ namespace Stycue.Api.Data
         public DbSet<UserFollow> UserFollows => Set<UserFollow>();
 
         public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
+        public DbSet<PointProduct> PointProducts => Set<PointProduct>();
+        public DbSet<PointPurchaseOrder> PointPurchaseOrders => Set<PointPurchaseOrder>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -283,6 +286,108 @@ namespace Stycue.Api.Data
 
                 entity.Property(x => x.Gender)
                     .HasConversion<int>();
+            });
+
+            modelBuilder.Entity<PointProduct>(entity =>
+            {
+                entity.HasIndex(x => x.Code).IsUnique();
+
+                entity.ToTable(t =>
+                {
+                    t.HasCheckConstraint(
+                        "CK_PointProducts_PriceTwd_Positive", "[PriceTwd] > 0");
+                    t.HasCheckConstraint(
+                        "CK_PointProducts_Points_Valid", 
+                        "[BasePoints] >= 0 AND [BonusPoints] >= 0 AND [Points] > 0 AND [Points] = [BasePoints] + [BonusPoints]");
+                });
+
+                entity.HasData(
+                    new PointProduct
+                    {
+                      Id = 1,
+                      Code = "POINT_100",
+                      Name = "基礎點數方案",
+                      PriceTwd = 49,
+                      BasePoints = 100,
+                      BonusPoints = 0,
+                      Points = 100,
+                      IsActive = true,
+                      DisplayOrder = 1
+                  },
+                  new PointProduct
+                  {
+                      Id = 2,
+                      Code = "POINT_250",
+                      Name = "超值點數方案",
+                      PriceTwd = 99,
+                      BasePoints = 200,
+                      BonusPoints = 50,
+                      Points = 250,
+                      IsActive = true,
+                      DisplayOrder = 2
+                  },
+                  new PointProduct
+                  {
+                      Id = 3,
+                      Code = "POINT_500",
+                      Name = "熱門點數方案",
+                      PriceTwd = 199,
+                      BasePoints = 400,
+                      BonusPoints = 100,
+                      Points = 500,
+                      IsActive = true,
+                      DisplayOrder = 3
+                  },
+                  new PointProduct
+                  {
+                      Id = 4,
+                      Code = "POINT_750",
+                      Name = "大容量點數方案",
+                      PriceTwd = 299,
+                      BasePoints = 600,
+                      BonusPoints = 150,
+                      Points = 750,
+                      IsActive = true,
+                      DisplayOrder = 4
+                  });
+            });
+
+            modelBuilder.Entity<PointPurchaseOrder>(entity =>
+            {
+                entity.HasIndex(x => x.MerchantTradeNo).IsUnique();
+
+                entity.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(x => x.PointProduct)
+                    .WithMany()
+                    .HasForeignKey(x => x.PointProductId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.ToTable(t =>
+                {
+                    t.HasCheckConstraint(
+                        "CK_PointPurchaseOrders_AmountTwd_Positive", "[AmountTwd] > 0");
+                    t.HasCheckConstraint(
+                        "CK_PointPurchaseOrders_Points_Positive", "[Points] > 0");
+                });
+
+                entity.Property(x => x.PaymentProvider)
+                    .HasConversion<string>()
+                    .HasMaxLength(20)
+                    .HasDefaultValue(PaymentProvider.Ecpay);
+
+                entity.Property(x => x.PaymentMethod)
+                    .HasConversion<string>()
+                    .HasMaxLength(20)
+                    .HasDefaultValue(PaymentMethod.CreditCard);
+
+                entity.Property(x => x.Status)
+                    .HasConversion<string>()
+                    .HasMaxLength(20)
+                    .HasDefaultValue(PointPurchaseStatus.Pending);
             });
         }
     }
