@@ -80,6 +80,8 @@ namespace Stycue.Api
                 builder.Configuration.GetSection("BlobStorage"));
             builder.Services.Configure<PointsOptions>(
                 builder.Configuration.GetSection("Points"));
+            builder.Services.Configure<EcpayOptions>(
+                builder.Configuration.GetSection("Ecpay"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>
