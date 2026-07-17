@@ -205,8 +205,6 @@ namespace Stycue.Api.Services
 
                 if(!spendResult.Success)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
-
                     return ApiResponse<CommissionDetailResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
                 }
 
@@ -764,6 +762,14 @@ namespace Stycue.Api.Services
                     "委託手續費比例設定錯誤", "INVALID_FEE_PERCENT");
             }
 
+            var baseAwardPoints = _pointOptions.Value.MinCommissionPoints;
+
+            if( request.AwardPoints < baseAwardPoints)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    $"委託積分不能低於{baseAwardPoints}積分", "COMMISSION_POINTS_TOO_LOW");
+            }
+
             await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             try
@@ -839,8 +845,31 @@ namespace Stycue.Api.Services
                         "此委託已發放過最佳留言積分", "COMMISSION_REWARD_ALREADY_PAID");
                 }
 
-                var feePoints = (int)Math.Ceiling(commission.Points * feePercent / 100m);
-                var rewardPoints = commission.Points - feePoints;
+                var awardBestCommentPoints = request.AwardPoints;
+
+                if(awardBestCommentPoints < commission.Points)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "給予最佳留言積分不能低於原始積分", "COMMISSION_POINTS_TOO_LOW");
+                }
+
+                var additionalPoints = awardBestCommentPoints - commission.Points;
+
+                if(additionalPoints > 0)
+                {
+                    var spendResult = await _pointService.SpendPointsAsync(
+                    commission.UserId, additionalPoints,
+                    PointTransactionType.CommissionBoost, PointReferenceType.Commission, commission.Id,
+                    $"最佳留言加碼積分{commission.Title}", cancellationToken);
+
+                    if (!spendResult.Success)
+                    {
+                        return ApiResponse<CommissionRewardResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
+                    }
+                }
+
+                var feePoints = (int)Math.Ceiling( awardBestCommentPoints * feePercent / 100m);
+                var rewardPoints = awardBestCommentPoints - feePoints;
 
                 if( rewardPoints <= 0)
                 {
@@ -864,6 +893,7 @@ namespace Stycue.Api.Services
                 var now = DateTime.UtcNow;
 
                 commission.Status = CommissionStatus.Rewarded;
+                commission.Points = awardBestCommentPoints;
                 commission.AwardedCommentId = awardedComment.Id;
                 commission.AwardedAt = now;
                 commission.RewardSettledAt = now;
