@@ -1,4 +1,6 @@
 ﻿using Stycue.Api.Enums;
+using System.Text.Json.Serialization;
+using Stycue.Api.Converters;
 
 namespace Stycue.Api.DTOs.Payment
 {
@@ -16,6 +18,7 @@ namespace Stycue.Api.DTOs.Payment
         public string PaymentActionUrl { get; set; } = string.Empty;
 
         // 前端用這些欄位建立隱藏 form 後 POST submit 至綠界。
+        [JsonConverter(typeof(PreserveStringDictionaryKeyJsonConverter))]
         public Dictionary<string, string> PaymentFormFields { get; set; } = [];
     }
 }
