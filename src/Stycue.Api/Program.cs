@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +19,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
+using Stycue.Api.Converters;
 
 namespace Stycue.Api
 {
@@ -51,7 +51,10 @@ namespace Stycue.Api
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.Converters.Add(
+                        new UtcDateTimeJsonConverter());
+                    options.JsonSerializerOptions.Converters.Add(
                         new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                    
                 });
 
             builder.Services.Configure<ApiBehaviorOptions>(options =>
