@@ -206,6 +206,10 @@ namespace Stycue.Api
             builder.Services.AddScoped<IFollowService, FollowService>();
             builder.Services.AddScoped<IUserService, UserService>();
             builder.Services.AddScoped<IHomepageItemResponseBuilder, HomepageItemResponseBuilder>();
+            builder.Services.AddScoped<IPointPurchaseService, PointPurchaseService>();
+
+            builder.Services.AddHttpClient<IEcpayPaymentGateway, EcpayPaymentGateway>(
+                client => client.Timeout = TimeSpan.FromSeconds(15));
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

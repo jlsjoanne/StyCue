@@ -8,6 +8,6 @@
         public string ItemName { get; set; } = string.Empty;
 
         public string ReturnUrl { get; set; } = string.Empty;
-        public string ClientBackUrl { get; set; } = string.Empty;
+        public string? ClientBackUrl { get; set; }
     }
 }
