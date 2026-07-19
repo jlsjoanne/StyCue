@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Stycue.Api.Data;
 
@@ -11,9 +12,11 @@ using Stycue.Api.Data;
 namespace Stycue.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719062912_AddSearchDocument")]
+    partial class AddSearchDocument
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -270,48 +273,6 @@ namespace Stycue.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("DailyPointClaims");
-                });
-
-            modelBuilder.Entity("Stycue.Api.Entities.FashionSearchDictionary", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Alias")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("CanonicalTerm")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<int>("Category")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<int>("Weight")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CanonicalTerm", "Alias")
-                        .IsUnique();
-
-                    b.ToTable("FashionSearchDictionaries", t =>
-                        {
-                            t.HasCheckConstraint("CK_FashionSearchDictionaries_Weight_NonNegative", "[Weight] >= 0");
-                        });
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.ImageAsset", b =>

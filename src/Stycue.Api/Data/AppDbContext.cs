@@ -36,6 +36,9 @@ namespace Stycue.Api.Data
         public DbSet<PointProduct> PointProducts => Set<PointProduct>();
         public DbSet<PointPurchaseOrder> PointPurchaseOrders => Set<PointPurchaseOrder>();
 
+        public DbSet<SearchDocument> SearchDocuments => Set<SearchDocument>();
+
+        public DbSet<FashionSearchDictionary> FashionSearchDictionaries=> Set<FashionSearchDictionary>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -388,6 +391,24 @@ namespace Stycue.Api.Data
                     .HasConversion<string>()
                     .HasMaxLength(20)
                     .HasDefaultValue(PointPurchaseStatus.Pending);
+            });
+
+            modelBuilder.Entity<SearchDocument>(entity =>
+            {
+                entity.Property(x => x.Id).HasMaxLength(64).ValueGeneratedNever();
+                entity.HasIndex(x => new { x.ItemType, x.ItemId }).IsUnique();
+                entity.HasIndex(x => new { x.IsVisible, x.UpdatedAt });
+            });
+
+            modelBuilder.Entity<FashionSearchDictionary>(entity =>
+            {
+                entity.HasIndex(x => new { x.CanonicalTerm, x.Alias }).IsUnique();
+                entity.ToTable(t => t.HasCheckConstraint(
+                    "CK_FashionSearchDictionaries_Weight_NonNegative",
+                    "[Weight] >= 0"));
+                entity.Property(x => x.Weight).HasDefaultValue(1);
+
+                entity.Property(x => x.IsActive).HasDefaultValue(true);
             });
         }
     }

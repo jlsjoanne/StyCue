@@ -27,12 +27,14 @@ namespace Stycue.Api.Services
         private readonly IMapper _mapper;
         private readonly IOptions<PointsOptions> _pointOptions;
         private readonly ILogger<CommissionService> _logger;
+        private readonly ISearchDocumentProjector _searchDocumentProjector;
 
         public CommissionService(
             AppDbContext dbContext, ITagService tagService, IPointService pointService, IFollowService followService,
             IImageService imageService, IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder,
-            IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger)
+            IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger,
+            ISearchDocumentProjector searchDocumentProjector)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -44,6 +46,7 @@ namespace Stycue.Api.Services
             _mapper = mapper;
             _pointOptions = pointoptions;
             _logger = logger;
+            _searchDocumentProjector = searchDocumentProjector;
         }
 
         // Interface Public Methods
@@ -215,6 +218,9 @@ namespace Stycue.Api.Services
                 BindCommissionTags(commission, commissionTags.Tags);
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.UpsertCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
                 commissionId = commission.Id;
@@ -237,6 +243,8 @@ namespace Stycue.Api.Services
 
                 return ApiResponse<CommissionDetailResponse>.FailResult("建立委託文失敗，請稍後再試", "COMMISSION_CREATE_FAILED");
             }
+
+           
 
             var detail = await FindCommissionForDetailAsync(commissionId, cancellationToken);
 
@@ -367,6 +375,9 @@ namespace Stycue.Api.Services
                 }
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.HideCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
                 var response = new CloseCommissionResponse
@@ -545,6 +556,9 @@ namespace Stycue.Api.Services
                 commission.UpdatedAt = now;
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.UpsertCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
             }
@@ -688,6 +702,9 @@ namespace Stycue.Api.Services
                 commission.UpdatedAt = now;
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.UpsertCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
                 var response = new BoostCommissionResponse

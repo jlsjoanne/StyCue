@@ -22,13 +22,15 @@ namespace Stycue.Api.Services
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
         private readonly ILogger<PostService> _logger;
+        private readonly ISearchDocumentProjector _searchDocumentProjector;
 
 
         public PostService(
             AppDbContext dbContext, ITagService tagService, IImageService imageService, IFollowService followService,
             IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder, 
-            IMapper mapper, ILogger<PostService> logger)
+            IMapper mapper, ILogger<PostService> logger,
+            ISearchDocumentProjector searchDocumentProjector)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -38,6 +40,7 @@ namespace Stycue.Api.Services
             _userSummaryResponseBuilder = userSummaryResponseBuilder;
             _mapper = mapper;
             _logger = logger;
+            _searchDocumentProjector = searchDocumentProjector;
         }
 
         public async Task<ApiResponse<PostDetailResponse>> CreateAsync(
@@ -88,6 +91,8 @@ namespace Stycue.Api.Services
             SetPostTags(post, tagResult.Tags, replaceExisting: false);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _searchDocumentProjector.UpsertPostAsync(post.Id, cancellationToken);
 
             var detail = await FindPostForDetailAsync(post.Id, cancellationToken);
             
@@ -190,6 +195,8 @@ namespace Stycue.Api.Services
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            await _searchDocumentProjector.UpsertPostAsync(post.Id, cancellationToken);
+
             var detail = await FindPostForDetailAsync(post.Id, cancellationToken);
 
             if (detail == null)
@@ -235,6 +242,8 @@ namespace Stycue.Api.Services
             post.DeletedAt = DateTime.UtcNow;
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _searchDocumentProjector.HidePostAsync(post.Id, cancellationToken);
 
             var response = new PostDeleteResponse
             {
