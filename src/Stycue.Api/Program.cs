@@ -213,6 +213,8 @@ namespace Stycue.Api
             builder.Services.AddScoped<ISearchDocumentProjector, SearchDocumentProjector>();
             builder.Services.AddScoped<IFashionQueryExpander, FashionQueryExpander>();
             builder.Services.AddScoped<ISearchCandidateProvider, MvpSearchCandidateProvider>();
+            builder.Services.AddScoped<ISearchService, SearchService>();
+            builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
 
             builder.Services.AddHttpClient<IEcpayPaymentGateway, EcpayPaymentGateway>(
                 client => client.Timeout = TimeSpan.FromSeconds(15));

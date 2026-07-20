@@ -39,6 +39,9 @@ namespace Stycue.Api.Data
         public DbSet<SearchDocument> SearchDocuments => Set<SearchDocument>();
 
         public DbSet<FashionSearchDictionary> FashionSearchDictionaries=> Set<FashionSearchDictionary>();
+
+        public DbSet<SearchHistory> SearchHistories => Set<SearchHistory>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -409,6 +412,18 @@ namespace Stycue.Api.Data
                 entity.Property(x => x.Weight).HasDefaultValue(1);
 
                 entity.Property(x => x.IsActive).HasDefaultValue(true);
+            });
+
+            modelBuilder.Entity<SearchHistory>(entity =>
+            {
+                entity.Property(x => x.Keyword).IsRequired().HasMaxLength(100);
+
+                entity.HasIndex(x => new { x.UserId, x.Keyword }).IsUnique();
+
+                entity.HasIndex(x => new { x.UserId, x.SearchedAt });
+
+                entity.HasOne(x => x.User).WithMany()
+                    .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

@@ -19,7 +19,8 @@ namespace Stycue.Api.Mappings
                   .ForMember(dest => dest.FavoriteCount, opt => opt.Ignore())
                   .ForMember(dest => dest.Images, opt => opt.Ignore())
                   .ForMember(dest => dest.Tags, opt => opt.Ignore())
-                  .ForMember(dest => dest.Reposts, opt => opt.Ignore());
+                  .ForMember(dest => dest.Reposts, opt => opt.Ignore())
+                  .ForMember(dest => dest.RewardPoints, opt => opt.Ignore());
 
             CreateMap<CommissionRepost, CommissionRepostResponse>()
                 .ForMember(dest => dest.RepostId, opt => opt.MapFrom(src => src.Id))
