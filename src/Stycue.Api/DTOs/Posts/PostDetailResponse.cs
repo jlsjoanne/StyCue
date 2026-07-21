@@ -2,6 +2,7 @@
 using Stycue.Api.DTOs.Images;
 using Stycue.Api.DTOs.Tags;
 using Stycue.Api.Enums;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
 namespace Stycue.Api.DTOs.Posts
@@ -36,6 +37,29 @@ namespace Stycue.Api.DTOs.Posts
         /// share = 分享文；question = 提問文。
         /// </summary>
         public PostType PostType { get; set; }
+
+        /// <summary>
+        /// 穿搭風格
+        /// </summary>
+        [MaxLength(50)]
+        public string? OutfitStyle { get; set; }
+
+        /// <summary>
+        /// 穿搭場合
+        /// </summary>
+        [MaxLength(50)]
+        public string? OutfitOccasion { get; set; }
+
+        /// <summary>
+        ///  穿搭日期
+        /// </summary>
+        public DateOnly? OutfitDate { get; set; }
+
+        /// <summary>
+        /// 穿搭地點
+        /// </summary>
+        [MaxLength(100)]
+        public string? OutfitLocation { get; set; }
 
         /// <summary>
         /// 建立時間。
