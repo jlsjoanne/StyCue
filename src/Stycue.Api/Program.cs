@@ -212,7 +212,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IPointPurchaseService, PointPurchaseService>();
             builder.Services.AddScoped<ISearchDocumentProjector, SearchDocumentProjector>();
             builder.Services.AddScoped<IFashionQueryExpander, FashionQueryExpander>();
-            builder.Services.AddScoped<ISearchCandidateProvider, MvpSearchCandidateProvider>();
+            builder.Services.AddScoped<ISearchCandidateProvider, SqlFullTextSearchCandidateProvider>();
             builder.Services.AddScoped<ISearchService, SearchService>();
             builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
 

@@ -5,24 +5,21 @@ using Stycue.Api.Enums;
 using Stycue.Api.Extensions;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Services.Models;
-using System.Reflection.Metadata;
 
 namespace Stycue.Api.Services
 {
     public class SqlFullTextSearchCandidateProvider : ISearchCandidateProvider
     {
         private readonly AppDbContext _dbContext;
-        private readonly ILogger<SqlFullTextSearchCandidateProvider> _logger;
 
         private const int MaxSearchTerms = 5;
         private const int MaxExpandedTerms = MaxSearchTerms - 1;
         private const int MaxKeywordLength = 100;
         private const int MaxSearchPageSize = 50;
 
-        public SqlFullTextSearchCandidateProvider(AppDbContext dbContext, ILogger<SqlFullTextSearchCandidateProvider> logger)
+        public SqlFullTextSearchCandidateProvider(AppDbContext dbContext)
         {
             _dbContext = dbContext;
-            _logger = logger;
         }
 
         public async Task<PagedResponse<SearchHit>> FindCandidatesAsync(
@@ -36,12 +33,26 @@ namespace Stycue.Api.Services
             var (normalizedPage, normalizedPageSize) = PagingHelper.Normalize(page, pageSize);
             normalizedPageSize = Math.Min(normalizedPageSize, MaxSearchPageSize);
 
+            var containsCondition = BuildContainsCondition(terms);
 
-            throw new ArgumentException();
+            var totalCount = await GetTotalCountAsync(containsCondition, cancellationToken);
+
+            var items = totalCount == 0
+                ? new List<SearchHit>()
+                : await GetPagedHitsAsync(containsCondition, normalizedPage, normalizedPageSize, cancellationToken);
+
+            return new PagedResponse<SearchHit>
+            {
+                Items = items,
+                Page = normalizedPage,
+                PageSize = normalizedPageSize,
+                TotalCount = totalCount,
+                TotalPages = PagingHelper.CalculateTotalPages(totalCount, normalizedPageSize)
+            };
         }
 
 
-        // private methods
+        // private helpers
 
         private static void ValidateTerms(SearchQueryTerms terms)
         {
@@ -69,7 +80,7 @@ namespace Stycue.Api.Services
 
             foreach (var expandedKeyword in terms.ExpandedKeywords)
             {
-                if (string.IsNullOrWhiteSpace(expandedKeyword) ||
+                if (string.IsNullOrWhiteSpace(expandedKeyword) || expandedKeyword.Length > MaxKeywordLength ||
                     !string.Equals(expandedKeyword, expandedKeyword.Trim(), StringComparison.Ordinal) ||
                     !seenTerms.Add(expandedKeyword))
                 {
@@ -128,7 +139,8 @@ namespace Stycue.Api.Services
                 FROM CONTAINSTABLE(
                     [dbo].[SearchDocuments],
                     [SearchText], {0}, LANGUAGE 1028) AS [fullTextResult]
-                INNER JOIN [dbo].[SearchDocuments] AS [document] ON[document].[IsVisible] = CAST(1 AS bit);
+                INNER JOIN [dbo].[SearchDocuments] AS [document] ON [document].[Id] = [fullTextResult].[KEY]
+                WHERE [document].[IsVisible] = CAST(1 AS bit)
             """;
 
             var totalCount = await _dbContext.Database
@@ -158,7 +170,7 @@ namespace Stycue.Api.Services
                 WHERE [document].[IsVisible] = CAST(1 AS bit)
                 ORDER BY [fullTextResult].[RANK] DESC, [document].[UpdatedAt] DESC, [document].[ItemType] ASC, [document].[ItemId] ASC
                 OFFSET {1} ROWS
-                FETCH NEXT {2} ROWS ONLY;
+                FETCH NEXT {2} ROWS ONLY
                 """;
 
             var rows = await _dbContext.Database

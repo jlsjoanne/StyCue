@@ -117,7 +117,7 @@ namespace Stycue.Api.Services
 
             foreach(var expandedKeyword in terms.ExpandedKeywords)
             {
-                if(string.IsNullOrWhiteSpace(expandedKeyword) ||
+                if(string.IsNullOrWhiteSpace(expandedKeyword) || expandedKeyword.Length > MaxKeywordLength ||
                     !string.Equals(expandedKeyword, expandedKeyword.Trim(), StringComparison.Ordinal) ||
                     !seenTerms.Add(expandedKeyword))
                 {
