@@ -48,6 +48,14 @@ namespace Stycue.Api.Middlewares
                     context, StatusCodes.Status400BadRequest,
                     message, "INVALID_OPERATION");
             }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                _logger.LogInformation(
+                     "Request was cancelled by client. Path: {Path}",
+                     context.Request.Path);
+
+                return;
+            }
             catch (Exception ex)
             {
                 // LogError: 把錯誤記到後端 log

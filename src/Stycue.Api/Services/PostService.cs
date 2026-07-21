@@ -22,13 +22,15 @@ namespace Stycue.Api.Services
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
         private readonly ILogger<PostService> _logger;
+        private readonly ISearchDocumentProjector _searchDocumentProjector;
 
 
         public PostService(
             AppDbContext dbContext, ITagService tagService, IImageService imageService, IFollowService followService,
             IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder, 
-            IMapper mapper, ILogger<PostService> logger)
+            IMapper mapper, ILogger<PostService> logger,
+            ISearchDocumentProjector searchDocumentProjector)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -38,6 +40,7 @@ namespace Stycue.Api.Services
             _userSummaryResponseBuilder = userSummaryResponseBuilder;
             _mapper = mapper;
             _logger = logger;
+            _searchDocumentProjector = searchDocumentProjector;
         }
 
         public async Task<ApiResponse<PostDetailResponse>> CreateAsync(
@@ -48,7 +51,8 @@ namespace Stycue.Api.Services
                 return userError;
             }
 
-            if(ValidatePostRequest(request, out var title, out var content) is { } requestError)
+            if(ValidatePostRequest(request, out var title, out var content,
+                out string? outfitStyle, out string? outfitOccasion, out DateOnly? outfitDate, out string? outfitLocation) is { } requestError)
             {
                 return requestError;
             }
@@ -74,6 +78,10 @@ namespace Stycue.Api.Services
                 Title = title,
                 Content = content,
                 PostType = request.PostType,
+                OutfitStyle = outfitStyle,
+                OutfitOccasion = outfitOccasion,
+                OutfitDate = outfitDate,
+                OutfitLocation = outfitLocation,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -83,6 +91,8 @@ namespace Stycue.Api.Services
             SetPostTags(post, tagResult.Tags, replaceExisting: false);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _searchDocumentProjector.UpsertPostAsync(post.Id, cancellationToken);
 
             var detail = await FindPostForDetailAsync(post.Id, cancellationToken);
             
@@ -150,7 +160,8 @@ namespace Stycue.Api.Services
                 return ApiResponse<PostDetailResponse>.FailResult("只有貼文作者可以編輯貼文", "POST_NOT_OWNER");
             }
 
-            if (ValidatePostRequest(request, out var title, out var content) is { } requestError)
+            if (ValidatePostRequest(request, out var title, out var content,
+                out string? outfitStyle, out string? outfitOccasion, out DateOnly? outfitDate, out string? outfitLocation) is { } requestError)
             {
                 return requestError;
             }
@@ -173,12 +184,18 @@ namespace Stycue.Api.Services
             post.Title = title;
             post.Content = content;
             post.PostType = request.PostType;
+            post.OutfitStyle = outfitStyle;
+            post.OutfitOccasion = outfitOccasion;
+            post.OutfitDate = outfitDate;
+            post.OutfitLocation = outfitLocation;
             post.UpdatedAt = DateTime.UtcNow;
 
             SetPostImages(post, imageResult.Data ?? [], replaceExisting: true);
             SetPostTags(post, tagResult.Tags ?? [], replaceExisting: true);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _searchDocumentProjector.UpsertPostAsync(post.Id, cancellationToken);
 
             var detail = await FindPostForDetailAsync(post.Id, cancellationToken);
 
@@ -226,6 +243,8 @@ namespace Stycue.Api.Services
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            await _searchDocumentProjector.HidePostAsync(post.Id, cancellationToken);
+
             var response = new PostDeleteResponse
             {
                 PostId = post.Id,
@@ -271,12 +290,17 @@ namespace Stycue.Api.Services
             return isOwner && post.DeletedAt == null;
         }
 
-        // Validate and normalize request title and content
+        // VValidate and normalize post request
         private static ApiResponse<PostDetailResponse>? ValidatePostRequest(
-            PostRequest? request, out string title, out string content)
+            PostRequest? request, out string title, out string content, 
+            out string? outfitStyle, out string? outfitOccasion, out DateOnly? outfitDate, out string? outfitLocation)
         {
             title = string.Empty;
             content = string.Empty;
+            outfitStyle = null;
+            outfitOccasion = null;
+            outfitDate = null;
+            outfitLocation = null;
 
             if(request == null)
             {
@@ -285,8 +309,12 @@ namespace Stycue.Api.Services
 
             title = request.Title?.Trim() ?? string.Empty;
             content = request.Content?.Trim() ?? string.Empty;
+            outfitStyle = string.IsNullOrWhiteSpace(request.OutfitStyle) ? null : request.OutfitStyle.Trim();
+            outfitOccasion = string.IsNullOrWhiteSpace(request.OutfitOccasion) ? null : request.OutfitOccasion.Trim();
+            outfitDate = request.OutfitDate;
+            outfitLocation = string.IsNullOrWhiteSpace(request.OutfitLocation) ? null : request.OutfitLocation.Trim();
 
-            if(string.IsNullOrWhiteSpace(title))
+            if (string.IsNullOrWhiteSpace(title))
             {
                 return ApiResponse<PostDetailResponse>.FailResult(
                     "貼文標題不可為空", "POST_TITLE_REQUIRED");
@@ -314,6 +342,24 @@ namespace Stycue.Api.Services
             {
                 return ApiResponse<PostDetailResponse>.FailResult(
                     "貼文類型不合法", "INVALID_POST_TYPE");
+            }
+
+            if(outfitStyle?.Length > 50)
+            {
+                return ApiResponse<PostDetailResponse>.FailResult(
+                    "穿搭風格不可超過 50 個字", "OUTFIT_STYLE_TOO_LONG");
+            }
+
+            if(outfitOccasion?.Length > 50)
+            {
+                return ApiResponse<PostDetailResponse>.FailResult(
+                    "穿搭場合不可超過 50 個字", "OUTFIT_OCCASION_TOO_LONG");
+            }
+            
+            if(outfitLocation?.Length > 100)
+            {
+                return ApiResponse<PostDetailResponse>.FailResult(
+                    "穿搭地點不可超過 100 個字", "OUTFIT_LOCATION_TOO_LONG");
             }
 
             return null;

@@ -13,5 +13,10 @@ namespace Stycue.Api.DTOs.Commissions
         /// </summary>
         [Range(1,int.MaxValue)]
         public int CommentId { get; set; }
+
+        /// <summary>
+        /// 委託者給予最佳留言的積分
+        /// </summary>
+        public int AwardPoints { get; set; }
     }
 }

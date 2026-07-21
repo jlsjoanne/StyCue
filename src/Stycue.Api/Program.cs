@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -20,12 +19,13 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
+using Stycue.Api.Converters;
 
 namespace Stycue.Api
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -51,7 +51,10 @@ namespace Stycue.Api
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.Converters.Add(
+                        new UtcDateTimeJsonConverter());
+                    options.JsonSerializerOptions.Converters.Add(
                         new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                    
                 });
 
             builder.Services.Configure<ApiBehaviorOptions>(options =>
@@ -80,6 +83,8 @@ namespace Stycue.Api
                 builder.Configuration.GetSection("BlobStorage"));
             builder.Services.Configure<PointsOptions>(
                 builder.Configuration.GetSection("Points"));
+            builder.Services.Configure<EcpayOptions>(
+                builder.Configuration.GetSection("Ecpay"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -204,6 +209,15 @@ namespace Stycue.Api
             builder.Services.AddScoped<IFollowService, FollowService>();
             builder.Services.AddScoped<IUserService, UserService>();
             builder.Services.AddScoped<IHomepageItemResponseBuilder, HomepageItemResponseBuilder>();
+            builder.Services.AddScoped<IPointPurchaseService, PointPurchaseService>();
+            builder.Services.AddScoped<ISearchDocumentProjector, SearchDocumentProjector>();
+            builder.Services.AddScoped<IFashionQueryExpander, FashionQueryExpander>();
+            builder.Services.AddScoped<ISearchCandidateProvider, SqlFullTextSearchCandidateProvider>();
+            builder.Services.AddScoped<ISearchService, SearchService>();
+            builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
+
+            builder.Services.AddHttpClient<IEcpayPaymentGateway, EcpayPaymentGateway>(
+                client => client.Timeout = TimeSpan.FromSeconds(15));
 
             // Open Api
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -243,6 +257,30 @@ namespace Stycue.Api
 
 
             var app = builder.Build();
+
+            // back-fill
+            if(args.Contains("--backfill-search", StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await using var scope = app.Services.CreateAsyncScope();
+                    var projector = scope.ServiceProvider
+                        .GetRequiredService<ISearchDocumentProjector>();
+
+                    await projector.BackfillAsync();
+
+                    app.Logger.LogInformation("SearchDocument backfill command completed successfully.");
+
+                    Environment.ExitCode = 0;
+                }
+                catch(Exception ex)
+                {
+                    app.Logger.LogCritical(
+                        ex, "SearchDocument backfill command failed.");
+                }
+
+                return;
+            }
 
             // Configure the HTTP request pipeline.
 

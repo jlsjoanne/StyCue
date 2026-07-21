@@ -34,6 +34,29 @@ namespace Stycue.Api.DTOs.Posts
         public PostType PostType { get; set; }
 
         /// <summary>
+        /// 穿搭風格
+        /// </summary>
+        [MaxLength(50)]
+        public string? OutfitStyle { get; set; }
+
+        /// <summary>
+        /// 穿搭場合
+        /// </summary>
+        [MaxLength(50)]
+        public string? OutfitOccasion { get; set; }
+
+        /// <summary>
+        ///  穿搭日期
+        /// </summary>
+        public DateOnly? OutfitDate { get; set; }
+
+        /// <summary>
+        /// 穿搭地點
+        /// </summary>
+        [MaxLength(100)]
+        public string? OutfitLocation { get; set; }
+
+        /// <summary>
         /// 已上傳的貼文圖片 ID 清單。
         /// 圖片需先透過 POST /api/images/posts 上傳取得 imageId。
         /// </summary>

@@ -272,6 +272,48 @@ namespace Stycue.Api.Migrations
                     b.ToTable("DailyPointClaims");
                 });
 
+            modelBuilder.Entity("Stycue.Api.Entities.FashionSearchDictionary", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("CanonicalTerm")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<int>("Weight")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalTerm", "Alias")
+                        .IsUnique();
+
+                    b.ToTable("FashionSearchDictionaries", t =>
+                        {
+                            t.HasCheckConstraint("CK_FashionSearchDictionaries_Weight_NonNegative", "[Weight] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Stycue.Api.Entities.ImageAsset", b =>
                 {
                     b.Property<int>("Id")
@@ -354,6 +396,187 @@ namespace Stycue.Api.Migrations
                     b.ToTable("ImageFashionMetadata");
                 });
 
+            modelBuilder.Entity("Stycue.Api.Entities.PointProduct", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BasePoints")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BonusPoints")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PriceTwd")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("PointProducts", t =>
+                        {
+                            t.HasCheckConstraint("CK_PointProducts_Points_Valid", "[BasePoints] >= 0 AND [BonusPoints] >= 0 AND [Points] > 0 AND [Points] = [BasePoints] + [BonusPoints]");
+
+                            t.HasCheckConstraint("CK_PointProducts_PriceTwd_Positive", "[PriceTwd] > 0");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            BasePoints = 100,
+                            BonusPoints = 0,
+                            Code = "POINT_100",
+                            DisplayOrder = 1,
+                            IsActive = true,
+                            Name = "基礎點數方案",
+                            Points = 100,
+                            PriceTwd = 49
+                        },
+                        new
+                        {
+                            Id = 2,
+                            BasePoints = 200,
+                            BonusPoints = 50,
+                            Code = "POINT_250",
+                            DisplayOrder = 2,
+                            IsActive = true,
+                            Name = "超值點數方案",
+                            Points = 250,
+                            PriceTwd = 99
+                        },
+                        new
+                        {
+                            Id = 3,
+                            BasePoints = 400,
+                            BonusPoints = 100,
+                            Code = "POINT_500",
+                            DisplayOrder = 3,
+                            IsActive = true,
+                            Name = "熱門點數方案",
+                            Points = 500,
+                            PriceTwd = 199
+                        },
+                        new
+                        {
+                            Id = 4,
+                            BasePoints = 600,
+                            BonusPoints = 150,
+                            Code = "POINT_750",
+                            DisplayOrder = 4,
+                            IsActive = true,
+                            Name = "大容量點數方案",
+                            Points = 750,
+                            PriceTwd = 299
+                        });
+                });
+
+            modelBuilder.Entity("Stycue.Api.Entities.PointPurchaseOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AmountTwd")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("MerchantTradeNo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("CreditCard");
+
+                    b.Property<string>("PaymentProvider")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Ecpay");
+
+                    b.Property<int>("PointProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderTradeNo")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Pending");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MerchantTradeNo")
+                        .IsUnique();
+
+                    b.HasIndex("PointProductId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PointPurchaseOrders", t =>
+                        {
+                            t.HasCheckConstraint("CK_PointPurchaseOrders_AmountTwd_Positive", "[AmountTwd] > 0");
+
+                            t.HasCheckConstraint("CK_PointPurchaseOrders_Points_Positive", "[Points] > 0");
+                        });
+                });
+
             modelBuilder.Entity("Stycue.Api.Entities.PointTransaction", b =>
                 {
                     b.Property<int>("Id")
@@ -408,6 +631,21 @@ namespace Stycue.Api.Migrations
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("OutfitDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("OutfitLocation")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OutfitOccasion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("OutfitStyle")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<int>("PostType")
                         .HasColumnType("int");
@@ -478,6 +716,79 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("TagId");
 
                     b.ToTable("PostTags");
+                });
+
+            modelBuilder.Entity("Stycue.Api.Entities.SearchDocument", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsVisible")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ItemType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TagsText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsVisible", "UpdatedAt");
+
+                    b.HasIndex("ItemType", "ItemId")
+                        .IsUnique();
+
+                    b.ToTable("SearchDocuments");
+                });
+
+            modelBuilder.Entity("Stycue.Api.Entities.SearchHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Keyword")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("SearchedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Keyword")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "SearchedAt");
+
+                    b.ToTable("SearchHistories");
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.Tag", b =>
@@ -853,6 +1164,25 @@ namespace Stycue.Api.Migrations
                     b.Navigation("ImageAsset");
                 });
 
+            modelBuilder.Entity("Stycue.Api.Entities.PointPurchaseOrder", b =>
+                {
+                    b.HasOne("Stycue.Api.Entities.PointProduct", "PointProduct")
+                        .WithMany()
+                        .HasForeignKey("PointProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Stycue.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PointProduct");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Stycue.Api.Entities.PointTransaction", b =>
                 {
                     b.HasOne("Stycue.Api.Entities.User", "User")
@@ -930,6 +1260,17 @@ namespace Stycue.Api.Migrations
                     b.Navigation("Post");
 
                     b.Navigation("Tag");
+                });
+
+            modelBuilder.Entity("Stycue.Api.Entities.SearchHistory", b =>
+                {
+                    b.HasOne("Stycue.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.User", b =>
