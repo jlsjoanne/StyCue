@@ -9,6 +9,7 @@
         CommissionBestCommentReward = 5,
         CommissionAutoReward = 6,
         CommissionRefund = 7,
-        CommissionFee = 8
+        CommissionFee = 8,
+        PointPurchase = 9
     }
 }

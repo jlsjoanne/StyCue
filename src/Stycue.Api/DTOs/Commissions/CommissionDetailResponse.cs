@@ -69,6 +69,13 @@ namespace Stycue.Api.DTOs.Commissions
         public int? AwardedCommentId { get; set; }
 
         /// <summary>
+        /// 被選為最佳留言的使用者實際獲得積分。
+        /// 已扣除委託手續積分；尚未發放最佳留言獎勵時不回傳。
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? RewardPoints { get; set; }
+
+        /// <summary>
         /// 最佳留言積分發放時間
         /// </summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

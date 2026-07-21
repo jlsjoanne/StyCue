@@ -27,12 +27,14 @@ namespace Stycue.Api.Services
         private readonly IMapper _mapper;
         private readonly IOptions<PointsOptions> _pointOptions;
         private readonly ILogger<CommissionService> _logger;
+        private readonly ISearchDocumentProjector _searchDocumentProjector;
 
         public CommissionService(
             AppDbContext dbContext, ITagService tagService, IPointService pointService, IFollowService followService,
             IImageService imageService, IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder,
-            IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger)
+            IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger,
+            ISearchDocumentProjector searchDocumentProjector)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -44,6 +46,7 @@ namespace Stycue.Api.Services
             _mapper = mapper;
             _pointOptions = pointoptions;
             _logger = logger;
+            _searchDocumentProjector = searchDocumentProjector;
         }
 
         // Interface Public Methods
@@ -68,13 +71,16 @@ namespace Stycue.Api.Services
             var isClosed = commission.Status == CommissionStatus.Closed || commission.ClosedAt != null;
             var isOwner = OwnershipGuard.IsOwner(commission.UserId, userId);
 
+
             if(isClosed && !isOwner)
             {
                 return ApiResponse<CommissionDetailResponse>.FailResult(
                     "找不到指定的委託文", "COMMISSION_NOT_FOUND");
             }
 
-            var response = BuildCommissionDetailResponse(commission, userId);
+            var rewardPoints = await GetBestCommentRewardPointsAsync(commission, cancellationToken);
+
+            var response = BuildCommissionDetailResponse(commission, userId, rewardPoints);
 
             response.Author.IsFollowing = await _followService.IsFollowingAsync(
                 userId, commission.UserId, cancellationToken);
@@ -205,8 +211,6 @@ namespace Stycue.Api.Services
 
                 if(!spendResult.Success)
                 {
-                    await transaction.RollbackAsync(cancellationToken);
-
                     return ApiResponse<CommissionDetailResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
                 }
 
@@ -217,6 +221,9 @@ namespace Stycue.Api.Services
                 BindCommissionTags(commission, commissionTags.Tags);
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.UpsertCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
                 commissionId = commission.Id;
@@ -240,6 +247,8 @@ namespace Stycue.Api.Services
                 return ApiResponse<CommissionDetailResponse>.FailResult("建立委託文失敗，請稍後再試", "COMMISSION_CREATE_FAILED");
             }
 
+           
+
             var detail = await FindCommissionForDetailAsync(commissionId, cancellationToken);
 
             if (detail == null)
@@ -251,7 +260,9 @@ namespace Stycue.Api.Services
                 return ApiResponse<CommissionDetailResponse>.FailResult("委託文建立成功，但讀取詳情失敗", "COMMISSION_DETAIL_NOT_FOUND_AFTER_CREATE");
             }
 
-            var response = BuildCommissionDetailResponse(detail, userId);
+            var rewardPoints = await GetBestCommentRewardPointsAsync(detail, cancellationToken);
+
+            var response = BuildCommissionDetailResponse(detail, userId, rewardPoints);
 
             return ApiResponse<CommissionDetailResponse>.SuccessResult(response, "委託文建立成功");
         }
@@ -369,6 +380,9 @@ namespace Stycue.Api.Services
                 }
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.HideCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
                 var response = new CloseCommissionResponse
@@ -547,6 +561,9 @@ namespace Stycue.Api.Services
                 commission.UpdatedAt = now;
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.UpsertCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
             }
@@ -602,7 +619,9 @@ namespace Stycue.Api.Services
                     "COMMISSION_DETAIL_NOT_FOUND_AFTER_REPOST");
             }
 
-            var response = BuildCommissionDetailResponse(detail, userId);
+            var rewardPoints = await GetBestCommentRewardPointsAsync(detail, cancellationToken);
+
+            var response = BuildCommissionDetailResponse(detail, userId, rewardPoints);
 
             return ApiResponse<CommissionDetailResponse>.SuccessResult(response,
                 "委託已重新開啟");
@@ -690,6 +709,9 @@ namespace Stycue.Api.Services
                 commission.UpdatedAt = now;
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                await _searchDocumentProjector.UpsertCommissionAsync(commission.Id, cancellationToken);
+
                 await transaction.CommitAsync(cancellationToken);
 
                 var response = new BoostCommissionResponse
@@ -762,6 +784,14 @@ namespace Stycue.Api.Services
             {
                 return ApiResponse<CommissionRewardResponse>.FailResult(
                     "委託手續費比例設定錯誤", "INVALID_FEE_PERCENT");
+            }
+
+            var baseAwardPoints = _pointOptions.Value.MinCommissionPoints;
+
+            if( request.AwardPoints < baseAwardPoints)
+            {
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    $"委託積分不能低於{baseAwardPoints}積分", "COMMISSION_POINTS_TOO_LOW");
             }
 
             await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -839,8 +869,31 @@ namespace Stycue.Api.Services
                         "此委託已發放過最佳留言積分", "COMMISSION_REWARD_ALREADY_PAID");
                 }
 
-                var feePoints = (int)Math.Ceiling(commission.Points * feePercent / 100m);
-                var rewardPoints = commission.Points - feePoints;
+                var awardBestCommentPoints = request.AwardPoints;
+
+                if(awardBestCommentPoints < commission.Points)
+                {
+                    return ApiResponse<CommissionRewardResponse>.FailResult(
+                        "給予最佳留言積分不能低於原始積分", "COMMISSION_POINTS_TOO_LOW");
+                }
+
+                var additionalPoints = awardBestCommentPoints - commission.Points;
+
+                if(additionalPoints > 0)
+                {
+                    var spendResult = await _pointService.SpendPointsAsync(
+                    commission.UserId, additionalPoints,
+                    PointTransactionType.CommissionBoost, PointReferenceType.Commission, commission.Id,
+                    $"最佳留言加碼積分{commission.Title}", cancellationToken);
+
+                    if (!spendResult.Success)
+                    {
+                        return ApiResponse<CommissionRewardResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
+                    }
+                }
+
+                var feePoints = (int)Math.Ceiling( awardBestCommentPoints * feePercent / 100m);
+                var rewardPoints = awardBestCommentPoints - feePoints;
 
                 if( rewardPoints <= 0)
                 {
@@ -864,6 +917,7 @@ namespace Stycue.Api.Services
                 var now = DateTime.UtcNow;
 
                 commission.Status = CommissionStatus.Rewarded;
+                commission.Points = awardBestCommentPoints;
                 commission.AwardedCommentId = awardedComment.Id;
                 commission.AwardedAt = now;
                 commission.RewardSettledAt = now;
@@ -1051,7 +1105,7 @@ namespace Stycue.Api.Services
 
         // 建立回傳委託文詳細內容
         private CommissionDetailResponse BuildCommissionDetailResponse(
-            Commission commission, int? currentUserId)
+            Commission commission, int? currentUserId, int? rewardPoints)
         {
             var now = DateTime.UtcNow;
             var isOwner = OwnershipGuard.IsOwner(commission.UserId, currentUserId);
@@ -1082,6 +1136,7 @@ namespace Stycue.Api.Services
                 .ToList();
 
             response.Reposts = BuildCommissionReposts(commission);
+            response.RewardPoints = rewardPoints;
 
             return response;
         }
@@ -1101,6 +1156,24 @@ namespace Stycue.Api.Services
                 AwardedAt = awardedAt,
                 ReceiverWallet = receiverWallet
             };
+        }
+
+        // 從交易紀錄讀取實際值
+        private async Task<int?> GetBestCommentRewardPointsAsync(
+            Commission commission, CancellationToken cancellationToken)
+        {
+            if(!commission.AwardedCommentId.HasValue)
+            {
+                return null;
+            }
+
+            return await _dbContext.PointTransactions
+                .AsNoTracking()
+                .Where(t => t.TransactionType == PointTransactionType.CommissionBestCommentReward &&
+                    t.ReferenceType == PointReferenceType.Commission &&
+                    t.ReferenceId == commission.Id)
+                .Select(t => (int?)t.Amount)
+                .SingleOrDefaultAsync(cancellationToken);
         }
     }
 }
