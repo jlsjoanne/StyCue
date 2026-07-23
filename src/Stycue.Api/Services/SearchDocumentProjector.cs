@@ -84,11 +84,8 @@ namespace Stycue.Api.Services
 
             foreach(var postBatch in postIds.Chunk(BackfillBatchSize))
             {
-                foreach(var postId in postBatch)
-                {
-                    await UpsertPostCoreAsync(postId, cancellationToken);
-                    processedPostCount++;
-                }
+                await UpsertPostBatchAsync(postBatch, cancellationToken);
+                processedPostCount += postBatch.Length;
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 _dbContext.ChangeTracker.Clear();
@@ -96,11 +93,8 @@ namespace Stycue.Api.Services
 
             foreach(var commissionBatch in commissionIds.Chunk(BackfillBatchSize))
             {
-                foreach(var commissionId in commissionBatch)
-                {
-                    await UpsertCommissionCoreAsync(commissionId, cancellationToken);
-                    processedCommissionCount++;
-                }
+                await UpsertCommissionBatchAsync(commissionBatch, cancellationToken);
+                processedCommissionCount += commissionBatch.Length;
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 _dbContext.ChangeTracker.Clear();
@@ -173,10 +167,6 @@ namespace Stycue.Api.Services
                 return;
             }
 
-            var tagsText = post.PostTags != null ? string.Join(" ", post.PostTags
-                .Select(pt => pt.Tag.Name?.Trim()).Where(name => !string.IsNullOrWhiteSpace(name)))
-                : "";
-
             var document = await _dbContext.SearchDocuments
                 .SingleOrDefaultAsync(d => d.Id == documentId, cancellationToken);
 
@@ -190,17 +180,7 @@ namespace Stycue.Api.Services
                 _dbContext.SearchDocuments.Add(document);
             }
 
-            document.ItemType = post.PostType == PostType.Share
-                ? HomepageItemType.PostShare : HomepageItemType.PostAsk;
-
-            document.ItemId = post.Id;
-            document.Title = post.Title;
-            document.Content = post.Content;
-            document.TagsText = tagsText;
-            document.SearchText = string.Join(
-                " ", new[] { post.Title, post.Content, tagsText }.Where(value => !string.IsNullOrWhiteSpace(value)));
-            document.IsVisible = post.DeletedAt == null;
-            document.UpdatedAt = post.UpdatedAt ?? post.DeletedAt ?? post.CreatedAt;
+            ApplyPostToDocument(post, document);
         }
 
         private async Task UpsertCommissionCoreAsync(int commissionId, CancellationToken cancellationToken)
@@ -220,10 +200,6 @@ namespace Stycue.Api.Services
                 return;
             }
 
-            var tagsText = commission.CommissionTags != null ? string.Join(" ", commission.CommissionTags
-                .Select(pt => pt.Tag.Name?.Trim()).Where(name => !string.IsNullOrWhiteSpace(name)))
-                : "";
-
             var document = await _dbContext.SearchDocuments
                 .SingleOrDefaultAsync(d => d.Id == documentId, cancellationToken);
 
@@ -237,15 +213,141 @@ namespace Stycue.Api.Services
                 _dbContext.SearchDocuments.Add(document);
             }
 
+            ApplyCommissionToDocument(commission, document);
+        }
+
+        // Post or Commission to document
+        // 共用
+        private static void ApplySearchDocument(SearchDocument document, string title, string content,
+            IEnumerable<string?> tagNames)
+        {
+            var tagsText = string.Join(" ", tagNames
+                .Select(name => name?.Trim()).Where(name => !string.IsNullOrWhiteSpace(name)));
+
+            document.Title = title;
+            document.Content = content;
+            document.TagsText = tagsText;
+            document.SearchText = string.Join(" ", new[] { title, content, tagsText }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        }
+
+        private static void ApplyPostToDocument(Post post, SearchDocument document)
+        {
+            document.ItemType = post.PostType == PostType.Share
+                ? HomepageItemType.PostShare : HomepageItemType.PostAsk;
+            document.ItemId = post.Id;
+
+            ApplySearchDocument(document, post.Title, post.Content, post.PostTags.Select(pt => pt.Tag.Name));
+            document.IsVisible = post.DeletedAt == null;
+            document.UpdatedAt = post.UpdatedAt ?? post.DeletedAt ?? post.CreatedAt;
+        }
+
+        private static void ApplyCommissionToDocument(Commission commission, SearchDocument document)
+        {
             document.ItemType = HomepageItemType.Commission;
             document.ItemId = commission.Id;
-            document.Title = commission.Title;
-            document.Content = commission.Content;
-            document.TagsText = tagsText;
-            document.SearchText = string.Join(
-                " ", new[] { commission.Title, commission.Content, tagsText }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            ApplySearchDocument(document, commission.Title, commission.Content
+                , commission.CommissionTags.Select(ct => ct.Tag.Name));
             document.IsVisible = commission.Status != CommissionStatus.Closed && commission.ClosedAt == null;
-            document.UpdatedAt = commission.UpdatedAt ?? commission.ClosedAt ?? commission.CreatedAt;
+            document.UpdatedAt = commission.UpdatedAt ?? commission.ClosedAt ?? commission.RewardSettledAt ?? commission.CreatedAt;
+        }
+
+        private async Task UpsertPostBatchAsync(int[] postIds, CancellationToken cancellationToken)
+        {
+            var documentIds = postIds.Select(id => $"post-{id}").ToList();
+
+            var posts = await _dbContext.Posts.AsNoTracking()
+                .Where(p => postIds.Contains(p.Id))
+                .Include(p => p.PostTags).ThenInclude(pt => pt.Tag)
+                .ToListAsync(cancellationToken);
+
+            var postsById = posts.ToDictionary(post => post.Id);
+
+            var documentsById = await _dbContext.SearchDocuments
+                .Where(d => documentIds.Contains(d.Id))
+                .ToDictionaryAsync(d => d.Id, cancellationToken);
+
+            foreach(var postId in postIds)
+            {
+                var documentId = $"post-{postId}";
+
+                if(!postsById.TryGetValue(postId, out var post))
+                {
+                    if(documentsById.TryGetValue(documentId, out var orphanedDocument))
+                    {
+                        orphanedDocument.IsVisible = false;
+                        orphanedDocument.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    _logger.LogWarning(
+                        "Search projection skipped because Post {PostId} was not found.", postId);
+
+                    continue;
+                }
+
+                if(!documentsById.TryGetValue(documentId, out var document))
+                {
+                    document = new SearchDocument
+                    {
+                        Id = documentId
+                    };
+
+                    _dbContext.SearchDocuments.Add(document);
+                    documentsById.Add(documentId, document);
+                }
+
+                ApplyPostToDocument(post, document);
+            }
+        }
+
+        private async Task UpsertCommissionBatchAsync(int[] commissionIds, CancellationToken cancellationToken)
+        {
+            var documentIds = commissionIds.Select(id => $"commission-{id}").ToList();
+
+            var commissions = await _dbContext.Commissions.AsNoTracking()
+                .Where(c => commissionIds.Contains(c.Id))
+                .Include(c => c.CommissionTags).ThenInclude(ct => ct.Tag)
+                .ToListAsync(cancellationToken);
+
+            var commissionsById = commissions.ToDictionary(commission => commission.Id);
+
+            var documentsById = await _dbContext.SearchDocuments
+                .Where(d => documentIds.Contains(d.Id))
+                .ToDictionaryAsync(d => d.Id, cancellationToken);
+
+            foreach(var commissionId in commissionIds)
+            {
+                var documentId = $"commission-{commissionId}";
+
+                if(!commissionsById.TryGetValue(commissionId, out var commission))
+                {
+                    if(documentsById.TryGetValue(documentId, out var orphanedDocument))
+                    {
+                        orphanedDocument.IsVisible = false;
+                        orphanedDocument.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    _logger.LogWarning(
+                        "Search projection skipped because Commission {CommissionId} was not found.",
+                        commissionId);
+
+                    continue;
+                }
+
+                if(!documentsById.TryGetValue(documentId, out var document))
+                {
+                    document = new SearchDocument
+                    {
+                        Id = documentId
+                    };
+
+                    _dbContext.SearchDocuments.Add(document);
+                    documentsById.Add(documentId, document);
+                }
+
+                ApplyCommissionToDocument(commission, document);
+            }
         }
     }
 }
