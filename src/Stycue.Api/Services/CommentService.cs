@@ -539,14 +539,15 @@ namespace Stycue.Api.Services
                 comment.Images.Clear();
             }
 
+            var existingImageIds = comment.Images.Select(i => i.Id).ToHashSet();
+
             foreach(var image in images)
             {
-                image.Comment = comment;
-
-                if( !comment.Images.Any(existingImages => existingImages.Id == image.Id))
+                if(!existingImageIds.Add(image.Id))
                 {
-                    comment.Images.Add(image);
+                    continue;
                 }
+                comment.Images.Add(image);
             }
         }
 

@@ -45,13 +45,15 @@ namespace Stycue.Api.Services
                     "請提供圖片上傳資料", "INVALID_IMAGE_REQUEST");
             }
 
-            var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId && u.DeactivatedAt == null, cancellationToken);
 
             if( user == null)
             {
                 return ApiResponse<ImageResponse>.FailResult(
                     "查無此使用者", "USER_NOT_FOUND");
             }
+
+            var oldAvatarImageId = user.AvatarImageId;
 
             var uploadRequest = new UploadImageRequest
             {
@@ -65,11 +67,41 @@ namespace Stycue.Api.Services
                 return uploadResult;
             }
 
+            // check if there is old avatar image
+            ImageAsset? oldAvatar = null;
+
+            if (oldAvatarImageId.HasValue)
+            {
+                oldAvatar = await _dbContext.ImageAssets.FirstOrDefaultAsync(
+                    image => image.Id == oldAvatarImageId.Value && image.OwnerUserId == user.Id &&
+                        image.Purpose == ImagePurpose.Profile && image.DeletedAt == null, cancellationToken);
+            }
+
+
+            var now = DateTime.UtcNow;
             // update avatar image to user profile
             user.AvatarImageId = uploadResult.Data.ImageId;
-            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt = now;
+
+            if( oldAvatar != null)
+            {
+                oldAvatar.DeletedAt = now;
+            }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if( oldAvatar != null)
+            {
+                try
+                {
+                    await _blobStorageService.DeleteIfExistsAsync(oldAvatar.BlobName, cancellationToken);
+                }
+                catch(Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Old avatar metadata was soft deleted but blob deletion failed. ImageId: {ImageId}", oldAvatar.Id);
+                }
+            }
 
             return ApiResponse<ImageResponse>.SuccessResult(uploadResult.Data, "大頭貼上傳成功");
         }

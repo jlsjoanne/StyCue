@@ -11,7 +11,8 @@ namespace Stycue.Api.Mappings
             CreateMap<User, CurrentUserResponse>();
 
             CreateMap<UserProfile, MyUserProfileResponse>()
-                .ForMember(dest => dest.User, opt => opt.Ignore());
+                .ForMember(dest => dest.User, opt => opt.Ignore())
+                .ForMember(dest => dest.AvatarImageId, opt => opt.Ignore());
 
             CreateMap<UserProfile, PrivateUserInfoResponse>();
         }

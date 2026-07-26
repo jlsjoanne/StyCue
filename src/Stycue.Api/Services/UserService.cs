@@ -10,6 +10,7 @@ using Stycue.Api.Entities;
 using Stycue.Api.Enums;
 using Stycue.Api.Extensions;
 using Stycue.Api.Services.Interfaces;
+using System.Globalization;
 
 namespace Stycue.Api.Services
 {
@@ -23,8 +24,8 @@ namespace Stycue.Api.Services
         private readonly ILogger<UserService> _logger;
 
         public UserService(
-            AppDbContext dbContext, IMapper mapper, 
-            IUserSummaryResponseBuilder userSummaryResponseBuilder, 
+            AppDbContext dbContext, IMapper mapper,
+            IUserSummaryResponseBuilder userSummaryResponseBuilder,
             IHomepageItemResponseBuilder homepageItemResponseBuilder,
             IFollowService followService, ILogger<UserService> logger)
         {
@@ -41,14 +42,14 @@ namespace Stycue.Api.Services
               int currentUserId,
               CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<CurrentUserResponse>(currentUserId) is { } userError)
+            if (ValidateUserId<CurrentUserResponse>(currentUserId) is { } userError)
             {
                 return userError;
             }
 
             var user = await FindActiveUserAsync(currentUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<CurrentUserResponse>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
@@ -64,19 +65,19 @@ namespace Stycue.Api.Services
             int? currentUserId,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PublicUserProfileResponse>(targetUserId) is { } userError)
+            if (ValidateUserId<PublicUserProfileResponse>(targetUserId) is { } userError)
             {
                 return userError;
             }
 
-            if(currentUserId.HasValue && ValidateUserId<PublicUserProfileResponse>(currentUserId.Value) is { } currentUserError)
+            if (currentUserId.HasValue && ValidateUserId<PublicUserProfileResponse>(currentUserId.Value) is { } currentUserError)
             {
                 return currentUserError;
             }
 
             var user = await FindUserForProfileAsync(targetUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<PublicUserProfileResponse>.FailResult(
                     "找不到指定的使用者", "TARGET_USER_NOT_FOUND");
@@ -91,14 +92,14 @@ namespace Stycue.Api.Services
             int currentUserId,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<MyUserProfileResponse>(currentUserId) is { } userError)
+            if (ValidateUserId<MyUserProfileResponse>(currentUserId) is { } userError)
             {
                 return userError;
             }
 
             var user = await FindUserForProfileAsync(currentUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<MyUserProfileResponse>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
@@ -114,50 +115,84 @@ namespace Stycue.Api.Services
             UpdateUserProfileRequest request,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<MyUserProfileResponse>(currentUserId) is { } userError)
+            if (ValidateUserId<MyUserProfileResponse>(currentUserId) is { } userError)
             {
                 return userError;
             }
 
-            if(request == null)
+            if (request == null)
             {
                 return ApiResponse<MyUserProfileResponse>.FailResult(
                     "請求內容不可為空", "REQUEST_REQUIRED");
             }
 
-            if(request.NickName != null && string.IsNullOrWhiteSpace(request.NickName.Trim()))
+            if (request.NickName != null && string.IsNullOrWhiteSpace(request.NickName.Trim()))
             {
                 return ApiResponse<MyUserProfileResponse>.FailResult(
                     "暱稱不可為空", "NICKNAME_REQUIRED");
             }
 
-            if(request.BirthDate.HasValue && request.BirthDate.Value.Date > DateTime.UtcNow.Date)
+            decimal? height = null;
+            decimal? weight = null;
+            DateTime? birthdate = null;
+
+            if(request.Height != null)
+            {
+                if( !decimal.TryParse(request.Height, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedHeight) || 
+                    parsedHeight > 300 || parsedHeight < 0)
+                {
+                    return ApiResponse<MyUserProfileResponse>.FailResult(
+                        "身高格式不正確，請輸入 0 至 300 的數值", "INVALID_HEIGHT");
+                }
+                height = parsedHeight;
+            }
+
+            if(request.Weight != null)
+            {
+                if( !decimal.TryParse(request.Weight, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedWeight) || 
+                    parsedWeight > 500 || parsedWeight < 0)
+                {
+                    return ApiResponse<MyUserProfileResponse>.FailResult(
+                        "體重格式不正確，請輸入 0 至 500 的數值", "INVALID_WEIGHT");
+                }
+                weight = parsedWeight;
+            }
+
+            if(request.BirthDate != null)
+            {
+                if( !DateTime.TryParseExact(request.BirthDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None , out var parsedBirthdate) || 
+                    parsedBirthdate > DateTime.UtcNow.Date)
+                {
+                    return ApiResponse<MyUserProfileResponse>.FailResult(
+                        "生日格式不正確，格式必須為 yyyy-MM-dd，且不可晚於今天", "INVALID_BIRTH_DATE");
+                }
+                birthdate = parsedBirthdate;
+            }
+
+            var hasProfileUpdates = request.Bio != null || request.Gender.HasValue || height.HasValue ||
+                weight.HasValue || birthdate.HasValue;
+
+            if(request.NickName == null && !hasProfileUpdates)
             {
                 return ApiResponse<MyUserProfileResponse>.FailResult(
-                    "生日不可晚於今天", "INVALID_BIRTH_DATE");
+                    "至少需要提供一個可更新欄位", "NO_FIELDS_TO_UPDATE");
             }
 
             var user = await FindUserForProfileAsync(currentUserId, true, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<MyUserProfileResponse>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
             }
 
-            if (request.AvatarImageId.HasValue && 
-                await ValidateAvatarImageAsync(currentUserId, request.AvatarImageId.Value, cancellationToken) is { } avatarError)
-            {
-                return avatarError;
-            }
+            var profile = hasProfileUpdates ? GetOrCreateProfile(user) : null;
 
-            ApplyProfileUpdates(user, GetOrCreateProfile(user), request);
+            ApplyProfileUpdates(user, profile , request, height, weight, birthdate);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            var updatedUser = await FindUserForProfileAsync(currentUserId, false, cancellationToken);
-
-            var response = BuildMyProfileResponse(updatedUser!);
+            var response = BuildMyProfileResponse(user);
 
             return ApiResponse<MyUserProfileResponse>.SuccessResult(response, "個人資訊更新成功");
         }
@@ -166,14 +201,14 @@ namespace Stycue.Api.Services
             int currentUserId,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PrivateUserInfoResponse>(currentUserId) is { } userError)
+            if (ValidateUserId<PrivateUserInfoResponse>(currentUserId) is { } userError)
             {
                 return userError;
             }
 
             var user = await FindUserForProfileAsync(currentUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<PrivateUserInfoResponse>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
@@ -189,7 +224,7 @@ namespace Stycue.Api.Services
             PagedQueryRequest request,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PagedResponse<HomepageItemResponse>>(currentUserId) is { } userError)
+            if (ValidateUserId<PagedResponse<HomepageItemResponse>>(currentUserId) is { } userError)
             {
                 return userError;
             }
@@ -198,7 +233,7 @@ namespace Stycue.Api.Services
 
             var user = await FindActiveUserAsync(currentUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<PagedResponse<HomepageItemResponse>>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
@@ -230,7 +265,7 @@ namespace Stycue.Api.Services
             PagedQueryRequest request,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PagedResponse<HomepageItemResponse>>(currentUserId) is { } userError)
+            if (ValidateUserId<PagedResponse<HomepageItemResponse>>(currentUserId) is { } userError)
             {
                 return userError;
             }
@@ -239,7 +274,7 @@ namespace Stycue.Api.Services
 
             var user = await FindActiveUserAsync(currentUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<PagedResponse<HomepageItemResponse>>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
@@ -272,7 +307,7 @@ namespace Stycue.Api.Services
             UserContentQueryRequest request,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PagedResponse<HomepageItemResponse>>(currentUserId) is { } userError)
+            if (ValidateUserId<PagedResponse<HomepageItemResponse>>(currentUserId) is { } userError)
             {
                 return userError;
             }
@@ -283,13 +318,13 @@ namespace Stycue.Api.Services
 
             var user = await FindActiveUserAsync(currentUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<PagedResponse<HomepageItemResponse>>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
             }
 
-            if( !Enum.IsDefined(typeof(HomepageFilter), request.Filter))
+            if (!Enum.IsDefined(typeof(HomepageFilter), request.Filter))
             {
                 return ApiResponse<PagedResponse<HomepageItemResponse>>.FailResult(
                     "不合法的內容篩選條件", "INVALID_FILTER");
@@ -301,13 +336,13 @@ namespace Stycue.Api.Services
 
             var savedItems = new List<(HomepageItemResponse Item, DateTime SavedAt)>();
 
-            if(includeSharePosts || includeQuestionPosts)
+            if (includeSharePosts || includeQuestionPosts)
             {
                 var postFavoriteQuery = _dbContext.PostFavorites
                     .AsNoTracking().AsSplitQuery()
                     .Where(f => f.UserId == currentUserId && f.Post.DeletedAt == null);
 
-                if(!includeSharePosts)
+                if (!includeSharePosts)
                 {
                     postFavoriteQuery = postFavoriteQuery.Where(p => p.Post.PostType != PostType.Share);
                 }
@@ -356,9 +391,9 @@ namespace Stycue.Api.Services
             var followedUserIds = await _followService
                 .GetFollowedUserIdsAsync(currentUserId, authorIds, cancellationToken);
 
-            foreach(var item in items)
+            foreach (var item in items)
             {
-                item.Author.IsFollowing = item.Author.UserId == currentUserId 
+                item.Author.IsFollowing = item.Author.UserId == currentUserId
                     ? null : followedUserIds.Contains(item.Author.UserId);
             }
 
@@ -372,7 +407,7 @@ namespace Stycue.Api.Services
             PagedQueryRequest request,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PagedResponse<FollowUserResponse>>(currentUserId) is { } userError)
+            if (ValidateUserId<PagedResponse<FollowUserResponse>>(currentUserId) is { } userError)
             {
                 return userError;
             }
@@ -381,7 +416,7 @@ namespace Stycue.Api.Services
 
             var user = await FindActiveUserAsync(currentUserId, false, cancellationToken);
 
-            if( user == null)
+            if (user == null)
             {
                 return ApiResponse<PagedResponse<FollowUserResponse>>.FailResult(
                     "找不到目前登入使用者", "USER_NOT_FOUND");
@@ -420,12 +455,12 @@ namespace Stycue.Api.Services
             PagedQueryRequest request,
             CancellationToken cancellationToken = default)
         {
-            if(ValidateUserId<PagedResponse<FollowUserResponse>>(targetUserId) is { } userError)
+            if (ValidateUserId<PagedResponse<FollowUserResponse>>(targetUserId) is { } userError)
             {
                 return userError;
             }
 
-            if(currentUserId.HasValue && 
+            if (currentUserId.HasValue &&
                 ValidateUserId<PagedResponse<FollowUserResponse>>(currentUserId.Value) is { } currentUserError)
             {
                 return currentUserError;
@@ -435,7 +470,7 @@ namespace Stycue.Api.Services
 
             var user = await FindActiveUserAsync(targetUserId, false, cancellationToken);
 
-            if(user == null)
+            if (user == null)
             {
                 return ApiResponse<PagedResponse<FollowUserResponse>>.FailResult(
                     "找不到指定的使用者", "TARGET_USER_NOT_FOUND");
@@ -486,7 +521,7 @@ namespace Stycue.Api.Services
         {
             var user = _dbContext.Users.Where(u => u.Id == userId && u.DeactivatedAt == null);
 
-            if(!needTracking)
+            if (!needTracking)
             {
                 user = user.AsNoTracking();
             }
@@ -501,7 +536,7 @@ namespace Stycue.Api.Services
             var user = _dbContext.Users.AsSplitQuery()
                 .Where(u => u.Id == userId && u.DeactivatedAt == null);
 
-            if(!needTracking)
+            if (!needTracking)
             {
                 user = user.AsNoTracking();
             }
@@ -512,7 +547,7 @@ namespace Stycue.Api.Services
         // UpdateMyProfileAsync 避免 User.Profile == null
         private UserProfile GetOrCreateProfile(User user)
         {
-            if(user.Profile != null)
+            if (user.Profile != null)
             {
                 return user.Profile;
             }
@@ -534,16 +569,18 @@ namespace Stycue.Api.Services
         {
             var userSummary = _userSummaryResponseBuilder.Build(user);
 
-            if(user.Profile == null)
+            if (user.Profile == null)
             {
                 return new MyUserProfileResponse
                 {
-                    User = userSummary
+                    User = userSummary,
+                    AvatarImageId = user.AvatarImageId
                 };
             }
 
             var response = _mapper.Map<MyUserProfileResponse>(user.Profile);
             response.User = userSummary;
+            response.AvatarImageId = user.AvatarImageId;
             return response;
         }
 
@@ -573,93 +610,51 @@ namespace Stycue.Api.Services
             };
         }
 
-        // 驗證帳號大頭貼
-        private async Task<ApiResponse<MyUserProfileResponse>?> ValidateAvatarImageAsync(
-            int currentUserId, int? avatarImageId, CancellationToken cancellationToken)
-        {
-            if(!avatarImageId.HasValue)
-            {
-                return null;
-            }
-
-            var image = await _dbContext.ImageAssets.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.Id == avatarImageId.Value, cancellationToken);
-
-            if(image == null)
-            {
-                return ApiResponse<MyUserProfileResponse>.FailResult(
-                    "找不到指定的大頭貼圖片","AVATAR_IMAGE_NOT_FOUND");
-            }
-
-            if(image.OwnerUserId != currentUserId)
-            {
-                return ApiResponse<MyUserProfileResponse>.FailResult(
-                    "只能使用自己上傳的大頭貼圖片", "AVATAR_IMAGE_NOT_OWNER");
-            }
-
-            if(image.DeletedAt != null)
-            {
-                return ApiResponse<MyUserProfileResponse>.FailResult(
-                    "無法使用已刪除的大頭貼圖片", "AVATAR_IMAGE_DELETED");
-            }
-
-            if(image.Purpose != ImagePurpose.Profile)
-            {
-                return ApiResponse<MyUserProfileResponse>.FailResult(
-                    "圖片用途不符合大頭貼", "INVALID_AVATAR_IMAGE_PURPOSE");
-            }
-
-            return null;
-        }
-
-        private static void ApplyProfileUpdates(User user, UserProfile profile,
-            UpdateUserProfileRequest request)
+        private static void ApplyProfileUpdates(User user, UserProfile? profile,
+            UpdateUserProfileRequest request, decimal? height, decimal? weight, DateTime? birthdate)
         {
             var now = DateTime.UtcNow;
             var userUpdated = false;
             var profileUpdated = false;
 
-            if(request.NickName != null)
+            if (request.NickName != null)
             {
                 user.NickName = request.NickName.Trim();
                 userUpdated = true;
             }
 
-            if (request.AvatarImageId.HasValue)
+            if(profile != null)
             {
-                user.AvatarImageId = request.AvatarImageId.Value;
-                userUpdated = true;
-            }
+                if (request.Bio != null)
+                {
+                    var bio = request.Bio.Trim();
+                    profile.Bio = string.IsNullOrWhiteSpace(bio) ? "" : bio;
+                    profileUpdated = true;
+                }
 
-            if(request.Bio != null)
-            {
-                var bio = request.Bio.Trim();
-                profile.Bio = string.IsNullOrWhiteSpace(bio) ? null : bio;
-                profileUpdated = true;
-            }
+                if (request.Gender.HasValue)
+                {
+                    profile.Gender = request.Gender.Value;
+                    profileUpdated = true;
+                }
 
-            if (request.Gender.HasValue)
-            {
-                profile.Gender = request.Gender.Value;
-                profileUpdated = true;
-            }
+                if (height.HasValue)
+                {
+                    profile.Height = height;
+                    profileUpdated = true;
+                }
 
-            if (request.Height.HasValue)
-            {
-                profile.Height = request.Height.Value;
-                profileUpdated = true;
-            }
+                if (weight.HasValue)
+                {
+                    profile.Weight = weight;
+                    profileUpdated = true;
+                }
 
-            if (request.Weight.HasValue)
-            {
-                profile.Weight = request.Weight.Value;
-                profileUpdated = true;
-            }
-
-            if (request.BirthDate.HasValue)
-            {
-                profile.BirthDate = request.BirthDate.Value.Date;
-                profileUpdated = true;
+                if (birthdate.HasValue)
+                {
+                    profile.BirthDate = birthdate;
+                    profileUpdated = true;
+                }
             }
 
             if (userUpdated)
@@ -669,7 +664,7 @@ namespace Stycue.Api.Services
 
             if (profileUpdated)
             {
-                profile.UpdatedAt = now;
+                profile!.UpdatedAt = now;
             }
         }
 
@@ -683,7 +678,7 @@ namespace Stycue.Api.Services
                 Page = page,
                 PageSize = pageSize,
                 TotalCount = totalCount,
-                TotalPages = (int)Math.Ceiling(totalCount / (double) pageSize)
+                TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
             };
         }
 

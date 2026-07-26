@@ -381,13 +381,15 @@ namespace Stycue.Api.Services
                 post.Images.Clear();
             }
 
+            var existingImageIds = post.Images.Select(i => i.Id).ToHashSet();
+
             foreach(var image in images)
             {
-                image.Post = post;
-                if( !post.Images.Any(existingImage => existingImage.Id == image.Id))
+                if (!existingImageIds.Add(image.Id))
                 {
-                    post.Images.Add(image);
+                    continue;
                 }
+                post.Images.Add(image);
             }
         }
 

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Follow;
 using Stycue.Api.DTOs.Homepage;
-using Stycue.Api.DTOs.Points;
 using Stycue.Api.DTOs.Users;
 using Stycue.Api.Extensions;
 using Stycue.Api.Services.Interfaces;
@@ -107,23 +106,21 @@ namespace Stycue.Api.Controllers
         /// 更新目前登入使用者的個人資料。
         /// </summary>
         /// <remarks>
-        /// 需登入後使用。可更新暱稱、大頭貼、自我介紹、性別、身高、體重與生日。
+        /// 需登入後使用。可更新暱稱、自我介紹、性別、身高、體重與生日。
         /// 未傳入的欄位不更新；自我介紹傳入空白時會清空。
         /// </remarks>
         /// <param name="request">更新個人資料請求</param>
         /// <param name="cancellationToken">Request 取消通知</param>
         /// <returns>更新後的個人資料</returns>
         /// <response code="200">個人資訊更新成功。</response>
-        /// <response code="400">請求內容不合法，例如暱稱空白、生日晚於今天、圖片已刪除或圖片用途不符。</response>
+        /// <response code="400">請求內容不合法，例如暱稱空白、身高或體重格式錯誤、生日格式非 yyyy-MM-dd、生日晚於今天，或未提供任何可更新欄位。</response>
         /// <response code="401">尚未登入或 JWT 無效。</response>
-        /// <response code="403">指定的大頭貼圖片不屬於目前登入使用者。</response>
-        /// <response code="404">找不到目前登入使用者或指定的大頭貼圖片。</response>
+        /// <response code="404">找不到目前登入使用者。</response>
         [Authorize]
         [HttpPut("me/profile")]
         [ProducesResponseType(typeof(ApiResponse<MyUserProfileResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<MyUserProfileResponse>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(typeof(ApiResponse<MyUserProfileResponse>), StatusCodes.Status403Forbidden)]
         [ProducesResponseType(typeof(ApiResponse<MyUserProfileResponse>), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateMyProfile(
             [FromBody] UpdateUserProfileRequest request, CancellationToken cancellationToken)
@@ -307,16 +304,14 @@ namespace Stycue.Api.Controllers
                 "INVALID_CURRENT_USER_ID" or
                 "REQUEST_REQUIRED" or
                 "NICKNAME_REQUIRED" or
+                "INVALID_HEIGHT" or
+                "INVALID_WEIGHT" or
                 "INVALID_BIRTH_DATE" or
-                "INVALID_FILTER" or
-                "AVATAR_IMAGE_DELETED" or
-                "INVALID_AVATAR_IMAGE_PURPOSE" => BadRequest(result),
+                "NO_FIELDS_TO_UPDATE" or
+                "INVALID_FILTER" => BadRequest(result),
 
                 "USER_NOT_FOUND" or
-                "TARGET_USER_NOT_FOUND" or
-                "AVATAR_IMAGE_NOT_FOUND" => NotFound(result),
-
-                "AVATAR_IMAGE_NOT_OWNER" => StatusCode(StatusCodes.Status403Forbidden, result),
+                "TARGET_USER_NOT_FOUND" => NotFound(result),
 
                 _ => BadRequest(result)
             };
