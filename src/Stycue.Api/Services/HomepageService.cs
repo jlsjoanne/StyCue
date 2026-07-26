@@ -5,6 +5,8 @@ using Stycue.Api.Enums;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Stycue.Api.Services.Models;
+using Stycue.Api.Entities;
 
 namespace Stycue.Api.Services
 {
@@ -90,7 +92,6 @@ namespace Stycue.Api.Services
                 case "latest":
                     sortBy = HomepageSortBy.Latest;
                     return null;
-                case "mostLikes":
                 case "highestCommissionPoints":
                     sortBy = HomepageSortBy.HighestCommissionPoints;
                     return null;
@@ -131,60 +132,113 @@ namespace Stycue.Api.Services
             }
         }
 
-        // Homepage Item Filter: build item => items to list
-
-        // homepage item to list: BuildCommissionHomepageItemAsync, BuildPostHomepageItemAsync
-
-        private async Task<List<HomepageItemResponse>> BuildCommissionHomepageItemsAsync(
-            int? currentUserId, CancellationToken cancellationToken)
+        // Build Homepage Candidate
+        private IQueryable<HomepageCandidate> BuildCommissionHomepageCandidatesQuery()
         {
-            var commissions = await _dbContext.Commissions
-                .AsNoTracking().AsSplitQuery()
+            return _dbContext.Commissions.AsNoTracking()
                 .Where(c => c.Status != CommissionStatus.Closed && c.ClosedAt == null)
-                .Include(c => c.User).ThenInclude(u => u.AvatarImage)
-                .Include(c => c.Images).ThenInclude(i => i.FashionMetadata)
-                .Include(c => c.CommissionTags).ThenInclude(ct => ct.Tag)
-                .Include(c => c.CommissionLikes)
-                .Include(c => c.CommissionFavorites)
-                .Include(c => c.Comments).ToListAsync(cancellationToken);
-
-            return commissions.Select(commission => _homepageItemResponseBuilder.BuildCommissionItem(commission, currentUserId)).ToList();
+                .Select(c => new HomepageCandidate(
+                    HomepageItemType.Commission, c.Id, c.CreatedAt, c.UpdatedAt ?? c.CreatedAt,
+                    c.Comments.Count(c => c.DeletedAt == null), c.Points));
         }
 
-        private async Task<List<HomepageItemResponse>> BuildPostHomepageItemsAsync(
-            int? currentUserId, PostType postType, CancellationToken cancellationToken)
+        private IQueryable<HomepageCandidate> BuildPostHomepageCandidatesQuery(PostType postType)
         {
-            var posts = await _dbContext.Posts.AsNoTracking().AsSplitQuery()
+            return _dbContext.Posts.AsNoTracking()
                 .Where(p => p.DeletedAt == null && p.PostType == postType)
+                .Select(p => new HomepageCandidate(postType == PostType.Share ? HomepageItemType.PostShare : HomepageItemType.PostAsk,
+                p.Id, p.CreatedAt, p.UpdatedAt ?? p.CreatedAt,
+                p.Comments.Count(c => c.DeletedAt == null), null));
+        }
+
+        // sort candidates
+        private IQueryable<HomepageCandidate> ApplyCandidateSorting(IQueryable<HomepageCandidate> candidates, HomepageSortBy sortBy)
+        {
+            switch (sortBy)
+            {
+                case HomepageSortBy.MostComments:
+                    return candidates
+                        .OrderByDescending(c => c.CommentCount)
+                        .ThenByDescending(c => c.EffectiveUpdatedAt)
+                        .ThenBy(c => c.ItemType).ThenByDescending(c => c.ItemId);
+                case HomepageSortBy.Latest:
+                    return candidates.OrderByDescending(c => c.CreatedAt)
+                        .ThenBy(c => c.ItemType).ThenByDescending(c => c.ItemId);
+                case HomepageSortBy.HighestCommissionPoints:
+                    return candidates.OrderByDescending(c => c.CommissionPoints ?? 0)
+                        .ThenByDescending(c => c.EffectiveUpdatedAt)
+                        .ThenBy(c => c.ItemType).ThenByDescending(c => c.ItemId);
+                default:
+                    throw new InvalidOperationException($"Unsupported homepage sortby: {sortBy}");
+            }
+        }
+
+        // Get post and commission detail
+
+        private Task<List<Post>> GetPostDetailsAsync(IReadOnlyCollection<int> postIds, CancellationToken cancellationToken)
+        {
+            if(postIds.Count == 0)
+            {
+                return Task.FromResult(new List<Post>());
+            }
+
+            return _dbContext.Posts.AsNoTracking().AsSplitQuery()
+                .Where(p => postIds.Contains(p.Id) && p.DeletedAt == null)
                 .Include(p => p.User).ThenInclude(u => u.AvatarImage)
                 .Include(p => p.Images).ThenInclude(i => i.FashionMetadata)
                 .Include(p => p.PostTags).ThenInclude(pt => pt.Tag)
                 .Include(p => p.PostLikes)
                 .Include(p => p.PostFavorites)
-                .Include(p => p.Comments)
-                .ToListAsync(cancellationToken);
-
-            return posts.Select(post => _homepageItemResponseBuilder.BuildPostItem(post, currentUserId)).ToList();
+                .Include(p => p.Comments).ToListAsync(cancellationToken);
         }
 
-        // Sorting
-        private static IEnumerable<HomepageItemResponse> ApplyHomepageSorting(
-            IEnumerable<HomepageItemResponse> items, HomepageSortBy sortBy)
+        private Task<List<Commission>> GetCommissionDetailsAsync(IReadOnlyCollection<int> commissionIds, CancellationToken cancellationToken)
         {
-            return sortBy switch
+            if(commissionIds.Count == 0)
             {
-                HomepageSortBy.Latest => items.OrderByDescending(item => item.CreatedAt),
-                
-                HomepageSortBy.HighestCommissionPoints => items
-                    .OrderByDescending(item => item.CommissionPoints ?? 0)
-                        .ThenByDescending(item => item.UpdatedAt ?? item.CreatedAt),
+                return Task.FromResult(new List<Commission>());
+            }
 
-                HomepageSortBy.MostComments => items
-                    .OrderByDescending(item => item.CommentCount)
-                        .ThenByDescending(item => item.UpdatedAt ?? item.CreatedAt),
+            return _dbContext.Commissions.AsNoTracking().AsSplitQuery()
+                .Where(c => commissionIds.Contains(c.Id) && c.ClosedAt == null && c.Status != CommissionStatus.Closed)
+                .Include(c => c.User).ThenInclude(u => u.AvatarImage)
+                .Include(c => c.Images).ThenInclude(i => i.FashionMetadata)
+                .Include(c => c.CommissionTags).ThenInclude(ct => ct.Tag)
+                .Include(c => c.CommissionLikes).Include(c => c.CommissionFavorites)
+                .Include(c => c.Comments).ToListAsync(cancellationToken);
+        }
 
-                _ => items.OrderByDescending(item => item.CreatedAt)
-            };
+        // build paged items
+        private List<HomepageItemResponse> BuildPagedItems(
+            IReadOnlyList<HomepageCandidate> pagedCandidates,
+            IReadOnlyDictionary<int, Post> postsById, IReadOnlyDictionary<int, Commission> commissionsById,
+            int? currentUserId)
+        {
+            var items = new List<HomepageItemResponse>(pagedCandidates.Count);
+
+            foreach(var candidate in pagedCandidates)
+            {
+                switch (candidate.ItemType)
+                {
+                    case HomepageItemType.PostShare:
+                    case HomepageItemType.PostAsk:
+                        if(postsById.TryGetValue(candidate.ItemId, out var post))
+                        {
+                            items.Add(_homepageItemResponseBuilder.BuildPostItem(post, currentUserId));
+                        }
+                        break;
+                    case HomepageItemType.Commission:
+                        if(commissionsById.TryGetValue(candidate.ItemId, out var commission))
+                        {
+                            items.Add(_homepageItemResponseBuilder.BuildCommissionItem(commission, currentUserId));
+                        }
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unsupported homepage item type: {candidate.ItemType}");
+                }
+            }
+
+            return items;
         }
 
         // Fill if following into Homepage Response
@@ -221,27 +275,52 @@ namespace Stycue.Api.Services
         private async Task<PagedResponse<HomepageItemResponse>> BuildHomepageResponseAsync(
             int? currentUserId, HomepageFilter filter, HomepageSortBy sortBy, int page, int pageSize, CancellationToken cancellationToken)
         {
-            var items = new List<HomepageItemResponse>();
+            IQueryable<HomepageCandidate> candidates;
 
-            var effectiveFilter = sortBy == HomepageSortBy.HighestCommissionPoints
-                ? HomepageFilter.Commission : filter;
+            var effectiveFilter = sortBy == HomepageSortBy.HighestCommissionPoints ? HomepageFilter.Commission : filter;
 
-            if(effectiveFilter is HomepageFilter.All or HomepageFilter.Commission)
+            switch (effectiveFilter)
             {
-                items.AddRange(await BuildCommissionHomepageItemsAsync(currentUserId, cancellationToken));
-            }
-            if(effectiveFilter is HomepageFilter.All or HomepageFilter.PostShare)
-            {
-                items.AddRange(await BuildPostHomepageItemsAsync(currentUserId, PostType.Share, cancellationToken));
-            }
-            if(effectiveFilter is HomepageFilter.All or HomepageFilter.PostAsk)
-            {
-                items.AddRange(await BuildPostHomepageItemsAsync(currentUserId, PostType.Question, cancellationToken));
+                case HomepageFilter.PostShare:
+                    candidates = BuildPostHomepageCandidatesQuery(PostType.Share);
+                    break;
+                case HomepageFilter.PostAsk:
+                    candidates = BuildPostHomepageCandidatesQuery(PostType.Question);
+                    break;
+                case HomepageFilter.Commission:
+                    candidates = BuildCommissionHomepageCandidatesQuery();
+                    break;
+                case HomepageFilter.All:
+                    var sharePosts = BuildPostHomepageCandidatesQuery(PostType.Share);
+                    var askPosts = BuildPostHomepageCandidatesQuery(PostType.Question);
+                    var commissionCandidates = BuildCommissionHomepageCandidatesQuery();
+
+                    candidates = sharePosts.Concat(askPosts).Concat(commissionCandidates);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unsupported homepage filter: {effectiveFilter}");
             }
 
-            var sortedItems = ApplyHomepageSorting(items, sortBy).ToList();
+            var sortedCandidates = ApplyCandidateSorting(candidates, sortBy);
 
-            var pagedItems = sortedItems.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var totalCount = await sortedCandidates.CountAsync(cancellationToken);
+
+            var pageCandidates = await sortedCandidates
+                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+
+            var postIds = pageCandidates.Where(c => c.ItemType == HomepageItemType.PostShare || c.ItemType == HomepageItemType.PostAsk)
+                .Select(c => c.ItemId).Distinct().ToArray();
+            var commissionIds = pageCandidates.Where(c => c.ItemType == HomepageItemType.Commission)
+                .Select(c => c.ItemId).Distinct().ToArray();
+
+            var posts = await GetPostDetailsAsync(postIds, cancellationToken);
+            var commissions = await GetCommissionDetailsAsync(commissionIds, cancellationToken);
+
+            var postsById = posts.ToDictionary(post => post.Id);
+            var commissionsById = commissions.ToDictionary(commission => commission.Id);
+
+            var pagedItems = BuildPagedItems(pageCandidates,
+                postsById, commissionsById, currentUserId);
 
             await FillAuthorFollowingAsync(pagedItems, currentUserId, cancellationToken);
 
@@ -250,10 +329,9 @@ namespace Stycue.Api.Services
                 Items = pagedItems,
                 Page = page,
                 PageSize = pageSize,
-                TotalCount = sortedItems.Count,
-                TotalPages = PagingHelper.CalculateTotalPages(sortedItems.Count, pageSize)
+                TotalCount = totalCount,
+                TotalPages = PagingHelper.CalculateTotalPages(totalCount, pageSize)
             };
         }
-
     }
 }
