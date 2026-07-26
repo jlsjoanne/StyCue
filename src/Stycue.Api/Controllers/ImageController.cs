@@ -134,7 +134,7 @@ namespace Stycue.Api.Controllers
         /// 回傳的 url 為短效 Read-only SAS URL，可供前端立即預覽大頭貼。
         /// 
         /// 大頭貼上傳 request 僅接受圖片檔案，不包含 category 或 brand 欄位，因此不會建立 ImageFashionMetadata
-        /// 若使用者原本已有大頭貼，此 API 只會將 AvatarImageId 指向新圖片；舊圖片不會自動刪除。
+        /// 若使用者原本已有大頭貼，成功換新後，舊大頭貼會 soft delete
         /// </remarks>
         /// <param name="request">大頭貼圖片檔案</param>
         /// <param name="cancellationToken">Request 取消通知</param>
@@ -142,7 +142,7 @@ namespace Stycue.Api.Controllers
         /// <response code="200">大頭貼上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
-        /// <response code="404">找不到目前登入使用者</response>
+        /// <response code="404">找不到目前登入使用者，或帳號已停用。</response>
         [HttpPost("avatar")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status200OK)]

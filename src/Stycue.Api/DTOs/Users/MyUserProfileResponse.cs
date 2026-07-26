@@ -14,6 +14,11 @@ namespace Stycue.Api.DTOs.Users
         public UserSummaryResponse User { get; set; } = new();
 
         /// <summary>
+        /// 使用者大頭貼Id
+        /// </summary>
+        public int? AvatarImageId { get; set; }
+
+        /// <summary>
         /// 使用者自我介紹。
         /// 未設定時為 null。
         /// </summary>
