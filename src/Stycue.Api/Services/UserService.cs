@@ -132,13 +132,22 @@ namespace Stycue.Api.Services
                     "暱稱不可為空", "NICKNAME_REQUIRED");
             }
 
+            var heightInput = request.Height?.Trim();
+            var weightInput = request.Weight?.Trim();
+            var birthDateInput = request.BirthDate?.Trim();
+
+            var shouldUpdateHeight = request.Height != null;
+            var shouldUpdateWeight = request.Weight != null;
+            var shouldUpdateBirthDate = request.BirthDate != null;
+
             decimal? height = null;
             decimal? weight = null;
             DateTime? birthdate = null;
 
-            if(request.Height != null)
+            if(shouldUpdateHeight && !string.IsNullOrWhiteSpace(heightInput))
             {
-                if( !decimal.TryParse(request.Height, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedHeight) || 
+
+                if( !decimal.TryParse(heightInput, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsedHeight) || 
                     parsedHeight > 300 || parsedHeight < 0)
                 {
                     return ApiResponse<MyUserProfileResponse>.FailResult(
@@ -147,9 +156,9 @@ namespace Stycue.Api.Services
                 height = parsedHeight;
             }
 
-            if(request.Weight != null)
+            if(shouldUpdateWeight && !string.IsNullOrWhiteSpace(weightInput))
             {
-                if( !decimal.TryParse(request.Weight, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedWeight) || 
+                if( !decimal.TryParse(weightInput, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedWeight) || 
                     parsedWeight > 500 || parsedWeight < 0)
                 {
                     return ApiResponse<MyUserProfileResponse>.FailResult(
@@ -158,9 +167,9 @@ namespace Stycue.Api.Services
                 weight = parsedWeight;
             }
 
-            if(request.BirthDate != null)
+            if(shouldUpdateBirthDate && !string.IsNullOrWhiteSpace(birthDateInput))
             {
-                if( !DateTime.TryParseExact(request.BirthDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None , out var parsedBirthdate) || 
+                if( !DateTime.TryParseExact(birthDateInput, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None , out var parsedBirthdate) || 
                     parsedBirthdate > DateTime.UtcNow.Date)
                 {
                     return ApiResponse<MyUserProfileResponse>.FailResult(
@@ -169,8 +178,8 @@ namespace Stycue.Api.Services
                 birthdate = parsedBirthdate;
             }
 
-            var hasProfileUpdates = request.Bio != null || request.Gender.HasValue || height.HasValue ||
-                weight.HasValue || birthdate.HasValue;
+            var hasProfileUpdates = request.Bio != null || request.Gender.HasValue || shouldUpdateHeight ||
+                shouldUpdateWeight || shouldUpdateBirthDate;
 
             if(request.NickName == null && !hasProfileUpdates)
             {
@@ -188,7 +197,9 @@ namespace Stycue.Api.Services
 
             var profile = hasProfileUpdates ? GetOrCreateProfile(user) : null;
 
-            ApplyProfileUpdates(user, profile , request, height, weight, birthdate);
+            ApplyProfileUpdates(user, profile , request, 
+                shouldUpdateHeight, shouldUpdateWeight, shouldUpdateBirthDate, 
+                height, weight, birthdate);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -611,7 +622,8 @@ namespace Stycue.Api.Services
         }
 
         private static void ApplyProfileUpdates(User user, UserProfile? profile,
-            UpdateUserProfileRequest request, decimal? height, decimal? weight, DateTime? birthdate)
+            UpdateUserProfileRequest request, bool shouldUpdateHeight, bool shouldUpdateWeight, bool shouldUpdateBirthDate,
+            decimal? height, decimal? weight, DateTime? birthdate)
         {
             var now = DateTime.UtcNow;
             var userUpdated = false;
@@ -638,19 +650,19 @@ namespace Stycue.Api.Services
                     profileUpdated = true;
                 }
 
-                if (height.HasValue)
+                if (shouldUpdateHeight)
                 {
                     profile.Height = height;
                     profileUpdated = true;
                 }
 
-                if (weight.HasValue)
+                if (shouldUpdateWeight)
                 {
                     profile.Weight = weight;
                     profileUpdated = true;
                 }
 
-                if (birthdate.HasValue)
+                if (shouldUpdateBirthDate)
                 {
                     profile.BirthDate = birthdate;
                     profileUpdated = true;
