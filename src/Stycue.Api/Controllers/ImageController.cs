@@ -30,11 +30,11 @@ namespace Stycue.Api.Controllers
         /// <remarks>
         /// 使用 multipart/form-data 上傳圖片。圖片上傳後尚未綁定到委託文，
         /// 後續建立委託文時需將回傳的 imageId 放入 request body。
-        /// 回傳的 url 為短效 Read-only SAS URL，可供前端預覽圖片。
+        /// 回傳的 url 為短效 Read-only URL，可供前端預覽圖片。
         /// </remarks>
         /// <param name="request">圖片檔案與選填的服飾分類、品牌資訊</param>
         /// <param name="cancellationToken">Request 取消通知</param>
-        /// <returns>圖片 ID、用途、短效 SAS URL 與選填 metadata</returns>
+        /// <returns>圖片 ID、用途、短效 Read-only URL 與選填 metadata</returns>
         /// <response code="200">圖片上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
@@ -63,11 +63,11 @@ namespace Stycue.Api.Controllers
         /// <remarks>
         /// 使用 multipart/form-data 上傳圖片。圖片上傳後尚未綁定到留言，
         /// 後續建立留言時需將回傳的 imageId 放入 request body。
-        /// 回傳的 url 為短效 Read-only SAS URL，可供前端預覽圖片。
+        /// 回傳的 url 為短效 Read-only URL，可供前端預覽圖片。
         /// </remarks>
         /// <param name="request">圖片檔案與選填的服飾分類、品牌資訊</param>
         /// <param name="cancellationToken">Request 取消通知</param>
-        /// <returns>圖片 ID、用途、短效 SAS URL 與選填 metadata</returns>
+        /// <returns>圖片 ID、用途、短效 Read-only URL 與選填 metadata</returns>
         /// <response code="200">圖片上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
@@ -97,11 +97,11 @@ namespace Stycue.Api.Controllers
         /// <remarks>
         /// 使用 multipart/form-data 上傳圖片。圖片上傳後尚未綁定到貼文，
         /// 後續建立貼文時需將回傳的 imageId 放入 request body。
-        /// 回傳的 url 為短效 Read-only SAS URL，可供前端預覽圖片。
+        /// 回傳的 url 為短效 Read-only URL，可供前端預覽圖片。
         /// </remarks>
         /// <param name="request">圖片檔案與選填的服飾分類、品牌資訊</param>
         /// <param name="cancellationToken">Request 取消通知</param>
-        /// <returns>圖片 ID、用途、短效 SAS URL 與選填 metadata</returns>
+        /// <returns>圖片 ID、用途、短效 Read-only URL 與選填 metadata</returns>
         /// <response code="200">圖片上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
@@ -131,14 +131,14 @@ namespace Stycue.Api.Controllers
         /// <remarks>
         /// 使用 multipart/form-data 上傳大頭貼圖片。
         /// 上傳成功後，後端會建立 Purpose = Profile 的 ImageAsset，並將目前登入使用者的 AvatarImageId 更新為新圖片 ID。
-        /// 回傳的 url 為短效 Read-only SAS URL，可供前端立即預覽大頭貼。
+        /// 回傳的 url 為短效 Read-only URL，可供前端立即預覽大頭貼。
         /// 
         /// 大頭貼上傳 request 僅接受圖片檔案，不包含 category 或 brand 欄位，因此不會建立 ImageFashionMetadata
         /// 若使用者原本已有大頭貼，成功換新後，舊大頭貼會 soft delete
         /// </remarks>
         /// <param name="request">大頭貼圖片檔案</param>
         /// <param name="cancellationToken">Request 取消通知</param>
-        /// <returns>圖片 ID、用途與短效 SAS URL</returns>
+        /// <returns>圖片 ID、用途與短效 Read-only URL</returns>
         /// <response code="200">大頭貼上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
@@ -173,7 +173,7 @@ namespace Stycue.Api.Controllers
         /// <remarks>
         /// 僅圖片擁有者可以刪除圖片。此 API 會先 soft delete ImageAsset metadata，
         /// 若該圖片是目前使用者的大頭貼，會同步清空 User.AvatarImageId，
-        /// 再嘗試刪除 Azure Blob 實體檔案。
+        /// 再嘗試刪除儲存服務中的實體物件。
         /// </remarks>
         /// <param name="imageId">圖片資料 ID</param>
         /// <param name="cancellationToken">Request 取消通知</param>

@@ -393,13 +393,13 @@ namespace Stycue.Api.Services
                 throw;
             }
 
-            var sasUrl = _blobStorageService.GenerateReadSasUrl(image.BlobName);
+            var readUrl = _blobStorageService.GenerateReadUrl(image.BlobName);
 
             return ApiResponse<ImageResponse>.SuccessResult(new ImageResponse
             {
                 ImageId = image.Id,
                 Purpose = image.Purpose,
-                Url = sasUrl,
+                Url = readUrl,
                 Category = image.FashionMetadata?.Category,
                 Brand = image.FashionMetadata?.Brand
             }, "圖片上傳成功");

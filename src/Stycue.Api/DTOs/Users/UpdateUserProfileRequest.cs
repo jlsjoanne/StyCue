@@ -17,7 +17,7 @@ namespace Stycue.Api.DTOs.Users
 
         /// <summary>
         /// 自我介紹。
-        /// 最多 500 個字元；未傳入或傳null時不更新。
+        /// 最多 500 個字元；未傳入或傳 null 時不更新，空字串或純空白字串會清空欄位。
         /// </summary>
         [MaxLength(500)]
         public string? Bio { get; set; }
@@ -31,18 +31,18 @@ namespace Stycue.Api.DTOs.Users
 
         /// <summary>
         /// 身高，單位 cm。
-        /// 允許範圍 0 到 300；未傳入或傳null時不更新。
+        /// 允許範圍 0 到 300；未傳入或傳null時不更新，空字串或純空白字串會清空欄位。
         /// </summary>
         public string? Height { get; set; }
 
         /// <summary>
         /// 體重，單位 kg。
-        /// 允許範圍 0 到 500；未傳入或傳null時不更新。
+        /// 允許範圍 0 到 500；未傳入或傳null時不更新，空字串或純空白字串會清空欄位。
         /// </summary>
         public string? Weight { get; set; }
 
         /// <summary>
-        /// 生日，格式必須為 yyyy-MM-dd，例如 2000-01-31。
+        /// 生日，格式必須為 yyyy-MM-dd，例如 2000-01-31，空字串或純空白字串會清空欄位。
         /// 未傳入或傳null時不更新。
         /// </summary>
         public string? BirthDate { get; set; }
