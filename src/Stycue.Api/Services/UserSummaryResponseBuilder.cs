@@ -22,7 +22,7 @@ namespace Stycue.Api.Services
 
             if( user.AvatarImage != null && user.AvatarImage.DeletedAt == null)
             {
-                response.AvatarUrl = _blobStorageService.GenerateReadSasUrl(user.AvatarImage.BlobName);
+                response.AvatarUrl = _blobStorageService.GenerateReadUrl(user.AvatarImage.BlobName);
             }
 
             return response;

@@ -18,10 +18,10 @@ namespace Stycue.Api.Services.Interfaces
 
         Task DeleteIfExistsAsync(string blobName, CancellationToken cancellationToken = default);
 
-        // 產生短效 SAS URL
+        // 產生短效 Read-only URL
         // 因為 container 是 private，前端不能直接讀， 所以後端要產生短效 read-only SAS URL
         // SAS URL 不存 DB，只在 response 時動態產生。
-        string GenerateReadSasUrl(string blobName, TimeSpan? expiresIn = null);
+        string GenerateReadUrl(string blobName, TimeSpan? expiresIn = null);
 
     }
 }

@@ -107,7 +107,9 @@ namespace Stycue.Api.Controllers
         /// </summary>
         /// <remarks>
         /// 需登入後使用。可更新暱稱、自我介紹、性別、身高、體重與生日。
-        /// 未傳入的欄位不更新；自我介紹傳入空白時會清空。
+        /// 未傳入或傳 null 的欄位不更新。
+        /// 自我介紹、身高、體重與生日傳入空字串或純空白字串時會清空欄位。
+        /// 暱稱不可為空白。
         /// </remarks>
         /// <param name="request">更新個人資料請求</param>
         /// <param name="cancellationToken">Request 取消通知</param>

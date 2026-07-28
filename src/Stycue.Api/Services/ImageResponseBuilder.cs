@@ -18,7 +18,7 @@ namespace Stycue.Api.Services
             return new ImageResponse{
                 ImageId = image.Id,
                 Purpose = image.Purpose,
-                Url = _blobStorageService.GenerateReadSasUrl(image.BlobName),
+                Url = _blobStorageService.GenerateReadUrl(image.BlobName),
                 Category = image.FashionMetadata?.Category,
                 Brand = image.FashionMetadata?.Brand
             };
