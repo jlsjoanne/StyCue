@@ -85,6 +85,10 @@ namespace Stycue.Api
                 builder.Configuration.GetSection("Points"));
             builder.Services.Configure<EcpayOptions>(
                 builder.Configuration.GetSection("Ecpay"));
+            builder.Services.Configure<RegistrationOptions>(
+                builder.Configuration.GetSection("Registration"));
+            builder.Services.Configure<ImageUploadOptions>(
+                builder.Configuration.GetSection("ImageUpload"));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>

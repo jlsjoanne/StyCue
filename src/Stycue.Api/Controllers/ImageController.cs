@@ -38,23 +38,20 @@ namespace Stycue.Api.Controllers
         /// <response code="200">圖片上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
+        /// <response code="429">已達每日圖片張數或容量上限</response>
         [HttpPost("commissions")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<object>),StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>),StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> UploadCommissionImage([FromForm] UploadImageRequest request, CancellationToken cancellationToken)
         {
             var userId = User.GetUserId();
 
             var result = await _imageService.UploadCommissionImageAsync(userId, request, cancellationToken);
 
-            if(!result.Success)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return ToActionResult(result);
         }
 
         /// <summary>
@@ -71,23 +68,20 @@ namespace Stycue.Api.Controllers
         /// <response code="200">圖片上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
+        /// <response code="429">已達每日圖片張數或容量上限</response>
         [HttpPost("comments")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> UploadCommentImage([FromForm] UploadImageRequest request, CancellationToken cancellationToken)
         {
             var userId = User.GetUserId();
 
             var result = await _imageService.UploadCommentImageAsync(userId, request, cancellationToken);
 
-            if(!result.Success)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return ToActionResult(result);
         }
 
 
@@ -105,23 +99,20 @@ namespace Stycue.Api.Controllers
         /// <response code="200">圖片上傳成功</response>
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
+        /// <response code="429">已達每日圖片張數或容量上限</response>
         [HttpPost("posts")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> UploadPostImage(
             [FromForm] UploadImageRequest request, CancellationToken cancellationToken)
         {
             var userId = User.GetUserId();
             var result = await _imageService.UploadPostImageAsync(userId, request, cancellationToken);
 
-            if (!result.Success)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return ToActionResult(result);
         }
 
 
@@ -143,28 +134,21 @@ namespace Stycue.Api.Controllers
         /// <response code="400">圖片檔案為空、格式錯誤或超過大小限制</response>
         /// <response code="401">未登入或登入資訊無效</response>
         /// <response code="404">找不到目前登入使用者，或帳號已停用。</response>
+        /// <response code="429">已達每日圖片張數或容量上限</response>
         [HttpPost("avatar")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiResponse<ImageResponse>), StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> UploadAvatarImage(
             [FromForm] UploadAvatarImageRequest request, CancellationToken cancellationToken)
         {
             var userId = User.GetUserId();
             var result = await _imageService.UploadAvatarImageAsync(userId, request, cancellationToken);
 
-            if (result.Success)
-            {
-                return Ok(result);
-            }
-
-            return result.ErrorCode switch
-            {
-                "USER_NOT_FOUND" => NotFound(result),
-                _ => BadRequest(result)
-            };
+            return ToActionResult(result);
         }
 
         /// <summary>
@@ -200,6 +184,12 @@ namespace Stycue.Api.Controllers
 
             var result = await _imageService.DeleteAsync(userId, imageId, cancellationToken);
 
+            return ToActionResult(result);
+        }
+
+        // private helper
+        private IActionResult ToActionResult<T> (ApiResponse<T> result)
+        {
             if (result.Success)
             {
                 return Ok(result);
@@ -207,9 +197,15 @@ namespace Stycue.Api.Controllers
 
             return result.ErrorCode switch
             {
+                "USER_NOT_FOUND" or 
                 "IMAGE_NOT_FOUND" => NotFound(result),
-                "FORBIDDEN" => StatusCode(StatusCodes.Status403Forbidden, result),
-                "IMAGE_ALREADY_DELETED" => BadRequest(result),
+
+                "FORBIDDEN" or 
+                "IMAGE_NOT_OWNER" => StatusCode(StatusCodes.Status403Forbidden, result),
+
+                "IMAGE_DAILY_COUNT_LIMIT_EXCEEDED" or
+                "IMAGE_DAILY_SIZE_LIMIT_EXCEEDED" => StatusCode(StatusCodes.Status429TooManyRequests, result),
+
                 _ => BadRequest(result)
             };
         }
