@@ -65,7 +65,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Comments");
+                    b.ToTable("Comments", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.CommentLike", b =>
@@ -83,7 +83,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("CommentLikes");
+                    b.ToTable("CommentLikes", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.Commission", b =>
@@ -156,7 +156,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Commissions");
+                    b.ToTable("Commissions", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.CommissionFavorite", b =>
@@ -174,7 +174,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("CommissionFavorites");
+                    b.ToTable("CommissionFavorites", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.CommissionLike", b =>
@@ -192,7 +192,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("CommissionLikes");
+                    b.ToTable("CommissionLikes", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.CommissionRepost", b =>
@@ -226,7 +226,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("CommissionReposts");
+                    b.ToTable("CommissionReposts", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.CommissionTag", b =>
@@ -241,7 +241,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("TagId");
 
-                    b.ToTable("CommissionTags");
+                    b.ToTable("CommissionTags", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.DailyPointClaim", b =>
@@ -269,7 +269,7 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("UserId", "ClaimDate")
                         .IsUnique();
 
-                    b.ToTable("DailyPointClaims");
+                    b.ToTable("DailyPointClaims", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.FashionSearchDictionary", b =>
@@ -308,7 +308,7 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("CanonicalTerm", "Alias")
                         .IsUnique();
 
-                    b.ToTable("FashionSearchDictionaries", t =>
+                    b.ToTable("FashionSearchDictionaries", null, t =>
                         {
                             t.HasCheckConstraint("CK_FashionSearchDictionaries_Weight_NonNegative", "[Weight] >= 0");
                         });
@@ -377,7 +377,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("PostId");
 
-                    b.ToTable("ImageAssets");
+                    b.ToTable("ImageAssets", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.ImageFashionMetadata", b =>
@@ -393,7 +393,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasKey("ImageAssetId");
 
-                    b.ToTable("ImageFashionMetadata");
+                    b.ToTable("ImageFashionMetadata", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.PointProduct", b =>
@@ -437,7 +437,7 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("PointProducts", t =>
+                    b.ToTable("PointProducts", null, t =>
                         {
                             t.HasCheckConstraint("CK_PointProducts_Points_Valid", "[BasePoints] >= 0 AND [BonusPoints] >= 0 AND [Points] > 0 AND [Points] = [BasePoints] + [BonusPoints]");
 
@@ -569,7 +569,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PointPurchaseOrders", t =>
+                    b.ToTable("PointPurchaseOrders", null, t =>
                         {
                             t.HasCheckConstraint("CK_PointPurchaseOrders_AmountTwd_Positive", "[AmountTwd] > 0");
 
@@ -611,7 +611,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PointTransactions");
+                    b.ToTable("PointTransactions", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.Post", b =>
@@ -664,7 +664,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Posts");
+                    b.ToTable("Posts", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.PostFavorite", b =>
@@ -682,7 +682,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PostFavorites");
+                    b.ToTable("PostFavorites", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.PostLike", b =>
@@ -700,7 +700,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PostLikes");
+                    b.ToTable("PostLikes", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.PostTag", b =>
@@ -715,7 +715,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("TagId");
 
-                    b.ToTable("PostTags");
+                    b.ToTable("PostTags", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.SearchDocument", b =>
@@ -759,7 +759,7 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("ItemType", "ItemId")
                         .IsUnique();
 
-                    b.ToTable("SearchDocuments");
+                    b.ToTable("SearchDocuments", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.SearchHistory", b =>
@@ -788,7 +788,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("UserId", "SearchedAt");
 
-                    b.ToTable("SearchHistories");
+                    b.ToTable("SearchHistories", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.Tag", b =>
@@ -818,7 +818,7 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("Tags");
+                    b.ToTable("Tags", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.User", b =>
@@ -878,7 +878,7 @@ namespace Stycue.Api.Migrations
                         .IsUnique()
                         .HasFilter("[GoogleSub] IS NOT NULL");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.UserFollow", b =>
@@ -896,7 +896,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasIndex("FollowingUserId");
 
-                    b.ToTable("UserFollows", t =>
+                    b.ToTable("UserFollows", null, t =>
                         {
                             t.HasCheckConstraint("CK_UserFollows_NotSelf", "[FollowerUserId] <> [FollowingUserId]");
                         });
@@ -921,7 +921,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("UserPointWallets");
+                    b.ToTable("UserPointWallets", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.UserProfile", b =>
@@ -955,7 +955,7 @@ namespace Stycue.Api.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("UserProfiles");
+                    b.ToTable("UserProfiles", (string)null);
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.Comment", b =>
