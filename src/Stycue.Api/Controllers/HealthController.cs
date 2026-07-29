@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Stycue.Api.Data;
@@ -31,6 +32,7 @@ namespace Stycue.Api.Controllers
         /// <returns>API 服務健康狀態</returns>
         /// <response code="200">API 服務正常運作</response>
         [HttpGet]
+        [AllowAnonymous]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Get()
         {

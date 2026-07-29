@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -19,6 +20,8 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
+using System.Security.Cryptography.Pkcs;
+using System.Security.Cryptography.X509Certificates;
 using Stycue.Api.Converters;
 
 namespace Stycue.Api
@@ -28,6 +31,20 @@ namespace Stycue.Api
         public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // set secrets
+            if(builder.Environment.IsProduction())
+            {
+                var secretPath = builder.Configuration["SecretStore:Path"] ??
+                    throw new InvalidOperationException("SecretStore:Path is missing.");
+
+                var thumbprint = builder.Configuration["SecretStore:CertificateThumbprint"]?.Replace(" ", string.Empty) ??
+                    throw new InvalidOperationException("SecretStore:CertificateThumbprint is missing.");
+
+                var decryptedSecrets = LoadEncryptedSecrets(secretPath, thumbprint);
+
+                builder.Configuration.AddJsonStream(new MemoryStream(decryptedSecrets, writable: false));
+            }
 
             if(OperatingSystem.IsWindows())
             {
@@ -184,7 +201,10 @@ namespace Stycue.Api
 
 
             // Authorization
-            builder.Services.AddAuthorization();
+            builder.Services.AddAuthorization(options =>
+            {
+                options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+            });
 
             // AutoMapper
             builder.Services.AddAutoMapper(cfg => { }, typeof(MappingAssemblyMarker));
@@ -216,7 +236,7 @@ namespace Stycue.Api
             builder.Services.AddScoped<IPointPurchaseService, PointPurchaseService>();
             builder.Services.AddScoped<ISearchDocumentProjector, SearchDocumentProjector>();
             builder.Services.AddScoped<IFashionQueryExpander, FashionQueryExpander>();
-            builder.Services.AddScoped<ISearchCandidateProvider, SqlFullTextSearchCandidateProvider>();
+            builder.Services.AddScoped<ISearchCandidateProvider, MvpSearchCandidateProvider>();
             builder.Services.AddScoped<ISearchService, SearchService>();
             builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
 
@@ -288,16 +308,16 @@ namespace Stycue.Api
 
             // Configure the HTTP request pipeline.
 
-            // Development-only API docs
-            if (docs.Enabled && (app.Environment.IsDevelopment() || app.Environment.IsStaging()))
+            // API docs
+            if (docs.Enabled)
             {
-                app.MapOpenApi();
+                app.MapOpenApi().AllowAnonymous();
                 app.MapScalarApiReference(docs.Route, options =>
                 {
                     options.WithTitle(docs.Title);
                     options.AddPreferredSecuritySchemes("Bearer");
                     options.DisableAgent();
-                });
+                }).AllowAnonymous();
             }
 
             // Middleware pipeline
@@ -395,6 +415,40 @@ namespace Stycue.Api
                 Name = tagName,
                 Description = description
             });
+        }
+
+        private static byte[] LoadEncryptedSecrets(string secretPath, string thumbprint)
+        {
+            if(!File.Exists(secretPath))
+            {
+                throw new FileNotFoundException(
+                    "Encrypted secret file is missing.", secretPath);
+            }
+
+            using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
+
+            store.Open(OpenFlags.ReadOnly);
+
+            var certificates = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, validOnly: false);
+
+            if( certificates.Count != 1 || !certificates[0].HasPrivateKey)
+            {
+                throw new InvalidOperationException(
+                    "Secret decryption certificate is unavailable.");
+            }
+
+            var cms = new EnvelopedCms();
+
+            // 讀取本機以公開 .cer 加密後的二進位 CMS 檔案
+            cms.Decode(File.ReadAllBytes(secretPath));
+
+            // 使用 Server Certificate Store 中的私鑰解密。
+            cms.Decrypt(certificates);
+
+            // 確認解密內容是有效 JSON；無效時直接啟動失敗
+            using var document = JsonDocument.Parse(cms.ContentInfo.Content);
+
+            return cms.ContentInfo.Content;
         }
     }
 }
