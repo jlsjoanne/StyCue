@@ -92,7 +92,7 @@ namespace Stycue.Api.Services
                 (DeleteSnapshotsOption.IncludeSnapshots, conditions: null, cancellationToken: cancellationToken);
         }
 
-        public string GenerateReadSasUrl(string blobName,TimeSpan? expiresIn = null)
+        public string GenerateReadUrl(string blobName,TimeSpan? expiresIn = null)
         {
             if (String.IsNullOrWhiteSpace(blobName))
             {

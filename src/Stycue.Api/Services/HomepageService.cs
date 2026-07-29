@@ -132,47 +132,6 @@ namespace Stycue.Api.Services
             }
         }
 
-        // Build Homepage Candidate
-        private IQueryable<HomepageCandidate> BuildCommissionHomepageCandidatesQuery()
-        {
-            return _dbContext.Commissions.AsNoTracking()
-                .Where(c => c.Status != CommissionStatus.Closed && c.ClosedAt == null)
-                .Select(c => new HomepageCandidate(
-                    HomepageItemType.Commission, c.Id, c.CreatedAt, c.UpdatedAt ?? c.CreatedAt,
-                    c.Comments.Count(c => c.DeletedAt == null), c.Points));
-        }
-
-        private IQueryable<HomepageCandidate> BuildPostHomepageCandidatesQuery(PostType postType)
-        {
-            return _dbContext.Posts.AsNoTracking()
-                .Where(p => p.DeletedAt == null && p.PostType == postType)
-                .Select(p => new HomepageCandidate(postType == PostType.Share ? HomepageItemType.PostShare : HomepageItemType.PostAsk,
-                p.Id, p.CreatedAt, p.UpdatedAt ?? p.CreatedAt,
-                p.Comments.Count(c => c.DeletedAt == null), null));
-        }
-
-        // sort candidates
-        private IQueryable<HomepageCandidate> ApplyCandidateSorting(IQueryable<HomepageCandidate> candidates, HomepageSortBy sortBy)
-        {
-            switch (sortBy)
-            {
-                case HomepageSortBy.MostComments:
-                    return candidates
-                        .OrderByDescending(c => c.CommentCount)
-                        .ThenByDescending(c => c.EffectiveUpdatedAt)
-                        .ThenBy(c => c.ItemType).ThenByDescending(c => c.ItemId);
-                case HomepageSortBy.Latest:
-                    return candidates.OrderByDescending(c => c.CreatedAt)
-                        .ThenBy(c => c.ItemType).ThenByDescending(c => c.ItemId);
-                case HomepageSortBy.HighestCommissionPoints:
-                    return candidates.OrderByDescending(c => c.CommissionPoints ?? 0)
-                        .ThenByDescending(c => c.EffectiveUpdatedAt)
-                        .ThenBy(c => c.ItemType).ThenByDescending(c => c.ItemId);
-                default:
-                    throw new InvalidOperationException($"Unsupported homepage sortby: {sortBy}");
-            }
-        }
-
         // Get post and commission detail
 
         private Task<List<Post>> GetPostDetailsAsync(IReadOnlyCollection<int> postIds, CancellationToken cancellationToken)
@@ -275,38 +234,82 @@ namespace Stycue.Api.Services
         private async Task<PagedResponse<HomepageItemResponse>> BuildHomepageResponseAsync(
             int? currentUserId, HomepageFilter filter, HomepageSortBy sortBy, int page, int pageSize, CancellationToken cancellationToken)
         {
-            IQueryable<HomepageCandidate> candidates;
+            
 
             var effectiveFilter = sortBy == HomepageSortBy.HighestCommissionPoints ? HomepageFilter.Commission : filter;
 
-            switch (effectiveFilter)
+            var shareRows = _dbContext.Posts.AsNoTracking()
+                .Where(p => p.DeletedAt == null && p.PostType == PostType.Share)
+                .Select(p => new
+                {
+                    ItemType = (int)HomepageItemType.PostShare,
+                    ItemId = p.Id,
+                    CreatedAt = p.CreatedAt,
+                    EffectiveUpdatedAt = p.UpdatedAt ?? p.CreatedAt,
+                    CommentCount = p.Comments.Count(c => c.DeletedAt == null),
+                    CommissionPoints = (int?)null
+                });
+
+            var askRows = _dbContext.Posts.AsNoTracking()
+                .Where(p => p.DeletedAt == null && p.PostType == PostType.Question)
+                .Select(p => new
+                {
+                    ItemType = (int)HomepageItemType.PostAsk,
+                    ItemId = p.Id,
+                    CreatedAt = p.CreatedAt,
+                    EffectiveUpdatedAt = p.UpdatedAt ?? p.CreatedAt,
+                    CommentCount = p.Comments.Count(c => c.DeletedAt == null),
+                    CommissionPoints = (int?)null
+                });
+
+            var commissionRows = _dbContext.Commissions.AsNoTracking()
+                .Where(c => c.Status != CommissionStatus.Closed && c.ClosedAt == null)
+                .Select(c => new
+                {
+                    ItemType = (int)HomepageItemType.Commission,
+                    ItemId = c.Id,
+                    CreatedAt = c.CreatedAt,
+                    EffectiveUpdatedAt = c.UpdatedAt ?? c.CreatedAt,
+                    CommentCount = c.Comments.Count(comment => comment.DeletedAt == null),
+                    CommissionPoints = (int?)c.Points
+                });
+
+            var rows = effectiveFilter switch
             {
-                case HomepageFilter.PostShare:
-                    candidates = BuildPostHomepageCandidatesQuery(PostType.Share);
-                    break;
-                case HomepageFilter.PostAsk:
-                    candidates = BuildPostHomepageCandidatesQuery(PostType.Question);
-                    break;
-                case HomepageFilter.Commission:
-                    candidates = BuildCommissionHomepageCandidatesQuery();
-                    break;
-                case HomepageFilter.All:
-                    var sharePosts = BuildPostHomepageCandidatesQuery(PostType.Share);
-                    var askPosts = BuildPostHomepageCandidatesQuery(PostType.Question);
-                    var commissionCandidates = BuildCommissionHomepageCandidatesQuery();
+                HomepageFilter.PostShare => shareRows,
+                HomepageFilter.PostAsk => askRows,
+                HomepageFilter.Commission => commissionRows,
+                HomepageFilter.All => shareRows.Concat(askRows).Concat(commissionRows),
+                _ => throw new InvalidOperationException($"Unsupported homepage filter: {effectiveFilter}")
+            };
 
-                    candidates = sharePosts.Concat(askPosts).Concat(commissionCandidates);
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unsupported homepage filter: {effectiveFilter}");
-            }
+            var sortedRows = sortBy switch
+            {
+                HomepageSortBy.MostComments => rows
+                    .OrderByDescending(r => r.CommentCount)
+                    .ThenByDescending(r => r.EffectiveUpdatedAt)
+                    .ThenBy(r => r.ItemType)
+                    .ThenByDescending(r => r.ItemId),
+                HomepageSortBy.Latest => rows
+                    .OrderByDescending(r => r.CreatedAt)
+                    .ThenBy(r => r.ItemType)
+                    .ThenByDescending(r => r.ItemId),
+                HomepageSortBy.HighestCommissionPoints => rows
+                    .OrderByDescending(r => r.CommissionPoints)
+                    .ThenByDescending(r => r.EffectiveUpdatedAt)
+                    .ThenBy(r => r.ItemType)
+                    .ThenByDescending(r => r.ItemId),
+                _ => throw new InvalidOperationException($"Unsupported homepage sortby: {sortBy}")
+            };
 
-            var sortedCandidates = ApplyCandidateSorting(candidates, sortBy);
+            var totalCount = await sortedRows.CountAsync(cancellationToken);
 
-            var totalCount = await sortedCandidates.CountAsync(cancellationToken);
-
-            var pageCandidates = await sortedCandidates
-                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            var pageCandidates = await sortedRows
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(c => new HomepageCandidate(
+                    (HomepageItemType) c.ItemType,
+                    c.ItemId, c.CreatedAt, c.EffectiveUpdatedAt, c.CommentCount, c.CommissionPoints))
+                .ToListAsync(cancellationToken);
 
             var postIds = pageCandidates.Where(c => c.ItemType == HomepageItemType.PostShare || c.ItemType == HomepageItemType.PostAsk)
                 .Select(c => c.ItemId).Distinct().ToArray();
