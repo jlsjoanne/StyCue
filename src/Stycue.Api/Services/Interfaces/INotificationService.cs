@@ -22,7 +22,7 @@ namespace Stycue.Api.Services.Interfaces
         // Business notifications: 不由 Controller 直接呼叫
 
         Task CreateCommissionManualRewardGrantedAsync(
-            CommissionNotificationContext commission, int rewardPoints, CancellationToken cancellationToken = default);
+            CommissionNotificationContext commission, int actorUserId, int rewardPoints, CancellationToken cancellationToken = default);
 
         Task CreateCommissionAutomaticRewardGrantedAsync(
             CommissionNotificationContext commission, int rewardPoints, CancellationToken cancellationToken = default);
