@@ -42,6 +42,8 @@ namespace Stycue.Api.Data
 
         public DbSet<SearchHistory> SearchHistories => Set<SearchHistory>();
 
+        public DbSet<Notification> Notifications => Set<Notification>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -424,6 +426,30 @@ namespace Stycue.Api.Data
 
                 entity.HasOne(x => x.User).WithMany()
                     .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.Property(x => x.DeduplicationKey).IsRequired().HasMaxLength(200);
+
+                entity.HasIndex(x => new
+                {
+                    x.RecipientUserId,
+                    x.DeduplicationKey
+                }).IsUnique();
+
+                entity.HasIndex(x => new
+                {
+                    x.RecipientUserId,
+                    x.IsRead,
+                    x.CreatedAt
+                });
+
+                entity.HasOne(x => x.RecipientUser).WithMany()
+                    .HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(x => x.ActorUser).WithMany()
+                    .HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
             });
         }
     }
