@@ -38,7 +38,6 @@ namespace Stycue.Api.Services
                 return userError;
             }
 
-            request ??= new NotificationQueryRequest();
 
             var (page, pageSize) = PagingHelper.Normalize(request.Page, request.PageSize);
 

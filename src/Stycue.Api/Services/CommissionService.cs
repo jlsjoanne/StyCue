@@ -5,6 +5,7 @@ using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Commissions;
 using Stycue.Api.Options;
 using Stycue.Api.Services.Interfaces;
+using Stycue.Api.Services.Models;
 using Stycue.Api.Entities;
 using Stycue.Api.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,7 @@ namespace Stycue.Api.Services
         private readonly IPointService _pointService;
         private readonly IImageService _imageService;
         private readonly IFollowService _followService;
+        private readonly INotificationService _notificationService;
         private readonly IImageResponseBuilder _imageResponseBuilder;
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
@@ -34,7 +36,7 @@ namespace Stycue.Api.Services
             IImageService imageService, IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder,
             IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger,
-            ISearchDocumentProjector searchDocumentProjector)
+            ISearchDocumentProjector searchDocumentProjector, INotificationService notificationService)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -47,6 +49,7 @@ namespace Stycue.Api.Services
             _pointOptions = pointoptions;
             _logger = logger;
             _searchDocumentProjector = searchDocumentProjector;
+            _notificationService = notificationService;
         }
 
         // Interface Public Methods
@@ -378,6 +381,11 @@ namespace Stycue.Api.Services
                     return ApiResponse<CloseCommissionResponse>.FailResult(
                         refundResult.Message, refundResult.ErrorCode);
                 }
+
+                var notificationContext = BuildNotificationContext(commission, commission.UserId);
+
+                await _notificationService.CreateCommissionEarlyCloseRefundedAsync(
+                    notificationContext, refundPoints, cancellationToken);
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -923,6 +931,11 @@ namespace Stycue.Api.Services
                 commission.RewardSettledAt = now;
                 commission.UpdatedAt = now;
 
+                var notificationContext = BuildNotificationContext(commission, awardedComment.UserId);
+
+                await _notificationService.CreateCommissionManualRewardGrantedAsync(
+                    notificationContext, commission.UserId, rewardPoints, cancellationToken);
+
                 // save to db
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
@@ -959,6 +972,8 @@ namespace Stycue.Api.Services
 
         // private helper methods
 
+
+        //Validations
         // 委託文是否到期
         private static bool IsExpired(Commission commission, DateTime now)
         {
@@ -1077,7 +1092,21 @@ namespace Stycue.Api.Services
                 image.CommissionRepostId = commissionRepostId;
             }
         }
-        
+
+        // 把Commission => CommissionNotificationContext
+        private static CommissionNotificationContext BuildNotificationContext(
+            Commission commission, int recipientUserId)
+        {
+            ArgumentNullException.ThrowIfNull(commission);
+
+            return new CommissionNotificationContext
+            {
+                RecipientUserId = recipientUserId,
+                CommissionId = commission.Id,
+                CommissionTitle = commission.Title
+            };
+        }
+
 
         // 建立Commission Response圖片
         private IReadOnlyList<ImageResponse> BuildOriginalCommissionImages(Commission commission)

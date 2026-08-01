@@ -44,9 +44,12 @@ namespace Stycue.Api
                 var decryptedSecrets = LoadEncryptedSecrets(secretPath, thumbprint);
 
                 builder.Configuration.AddJsonStream(new MemoryStream(decryptedSecrets, writable: false));
+
+                // 讓 IIS web.config 的 environment variables 再次具有較高優先權
+                builder.Configuration.AddEnvironmentVariables();
             }
 
-            if(OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows())
             {
                 AddWindowsEventLog(builder);
             }
@@ -106,6 +109,8 @@ namespace Stycue.Api
                 builder.Configuration.GetSection("Registration"));
             builder.Services.Configure<ImageUploadOptions>(
                 builder.Configuration.GetSection("ImageUpload"));
+            builder.Services.Configure<CommissionSettlementOptions>(
+                builder.Configuration.GetSection(CommissionSettlementOptions.SectionName));
 
             // Database Connection String
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -240,6 +245,15 @@ namespace Stycue.Api
             builder.Services.AddScoped<ISearchService, SearchService>();
             builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
             builder.Services.AddScoped<INotificationService, NotificationService>();
+            builder.Services.AddScoped<ICommissionSettlementService, CommissionSettlementService>();
+
+            var commissionSettlementEnabled = builder.Configuration
+                .GetValue<bool>($"{CommissionSettlementOptions.SectionName}:Enabled");
+
+            if (commissionSettlementEnabled)
+            {
+                builder.Services.AddHostedService<CommissionSettlementBackgroundService>();
+            }
 
             builder.Services.AddHttpClient<IEcpayPaymentGateway, EcpayPaymentGateway>(
                 client => client.Timeout = TimeSpan.FromSeconds(15));
