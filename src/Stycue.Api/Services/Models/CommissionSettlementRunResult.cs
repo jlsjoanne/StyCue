@@ -5,7 +5,8 @@
         public int CandidateCount { get; init; }
         public int ProcessedCount { get; init; }
         public int ExpiredNotificationCount { get; init; }
-        public int SelectionReminderCount { get; init; }
+        public int FirstExpirationActionReminderCount { get; init; }
+        public int BestCommentSelectionReminderCount { get; init; }
         public int AutoRewardedCount { get; init; }
         public int RefundedCount { get; init; }
         public int SkippedCount { get; init; }

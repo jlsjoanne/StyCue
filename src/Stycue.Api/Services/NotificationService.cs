@@ -299,9 +299,11 @@ namespace Stycue.Api.Services
         }
 
         public async Task CreateCommissionExpiredAsync(
-            CommissionNotificationContext commission, CancellationToken cancellationToken = default)
+            CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default)
         {
             ValidateCommissionNotificationContext(commission);
+
+            ValidateExpirationCycle(expirationCycle);
 
             var command = new NotificationCreateCommand(
                 RecipientUserId: commission.RecipientUserId,
@@ -311,15 +313,16 @@ namespace Stycue.Api.Services
                 Message: $"你的委託「{commission.CommissionTitle}」已到期",
                 ReferenceType: NotificationReferenceType.Commission,
                 ReferenceId: commission.CommissionId,
-                DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, "expired"));
+                DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, $"expiration:{expirationCycle}:expired"));
 
             await AddIfNotExistsAsync(command, cancellationToken);
         }
 
         public async Task CreateBestCommentSelectionRequiredAsync(
-            CommissionNotificationContext commission, CancellationToken cancellationToken = default)
+            CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default)
         {
             ValidateCommissionNotificationContext(commission);
+            ValidateExpirationCycle(expirationCycle);
 
             var command = new NotificationCreateCommand(
                 RecipientUserId: commission.RecipientUserId,
@@ -329,7 +332,25 @@ namespace Stycue.Api.Services
                 Message: $"你的委託「{commission.CommissionTitle}」已到期，請在 24 小時內選擇最佳留言",
                 ReferenceType: NotificationReferenceType.Commission,
                 ReferenceId: commission.CommissionId,
-                DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, "best-comment-selection-required"));
+                DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, $"expiration:{expirationCycle}:best-comment-selection-required"));
+
+            await AddIfNotExistsAsync(command, cancellationToken);
+        }
+
+        public async Task CreateCommissionFirstExpirationActionRequiredAsync(
+            CommissionNotificationContext commission, CancellationToken cancellationToken = default)
+        {
+            ValidateCommissionNotificationContext(commission);
+
+            var command = new NotificationCreateCommand(
+                RecipientUserId: commission.RecipientUserId,
+                ActorUserId: null,
+                Type: NotificationType.CommissionFirstExpirationActionRequired,
+                Title: "委託已到期，請在 24 小時內處理",
+                Message: $"你的委託「{commission.CommissionTitle}」已到期。請在 24 小時內選擇加碼或重新發表；若有合格根留言，也可選擇最佳留言。逾期後系統將自動結算。",
+                ReferenceType: NotificationReferenceType.Commission,
+                ReferenceId: commission.CommissionId,
+                DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, "expiration:1:action-required"));
 
             await AddIfNotExistsAsync(command, cancellationToken);
         }
@@ -440,7 +461,15 @@ namespace Stycue.Api.Services
         private static ApiResponse<T>? ValidateUserId<T>(int userId)
         {
             return userId > 0 ? null : ApiResponse<T>.FailResult("不合法的使用者 ID", "INVALID_USER_ID");
-        } 
+        }
+
+        private static void ValidateExpirationCycle(int expirationCycle)
+        {
+            if (expirationCycle < 1 || expirationCycle > 2)
+            {
+                throw new ArgumentOutOfRangeException(nameof(expirationCycle), "ExpirationCycle 必須為 1 或 2");
+            }
+        }
 
         private sealed record NotificationCreateCommand(
             int RecipientUserId,

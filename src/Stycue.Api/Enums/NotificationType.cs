@@ -8,6 +8,7 @@
         CommissionCommentCreated = 4,
         CommissionExpired = 5,
         CommissionBestCommentSelectionRequired = 6,
-        PointPurchaseSucceeded = 7
+        PointPurchaseSucceeded = 7,
+        CommissionFirstExpirationActionRequired = 8
     }
 }

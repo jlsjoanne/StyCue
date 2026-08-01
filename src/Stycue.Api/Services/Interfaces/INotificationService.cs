@@ -34,9 +34,12 @@ namespace Stycue.Api.Services.Interfaces
             CommissionNotificationContext commission, int refundPoints, CancellationToken cancellationToken = default);
 
         Task CreateCommissionExpiredAsync(
-            CommissionNotificationContext commission, CancellationToken cancellationToken = default);
+            CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default);
 
         Task CreateBestCommentSelectionRequiredAsync(
+            CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default);
+
+        Task CreateCommissionFirstExpirationActionRequiredAsync(
             CommissionNotificationContext commission, CancellationToken cancellationToken = default);
 
         Task CreateCommissionCommentCreatedAsync(

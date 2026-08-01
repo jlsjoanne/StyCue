@@ -87,6 +87,12 @@ namespace Stycue.Api.Data
                     .WithMany()
                     .HasForeignKey(x => x.AwardedCommentId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.Property(c => c.RowVersion)
+                    .IsRowVersion()
+                    .IsConcurrencyToken();
+
+                entity.Property(c => c.ExpirationCycle).HasDefaultValue(1);
             });
 
             modelBuilder.Entity<CommissionRepost>(entity =>
@@ -248,6 +254,14 @@ namespace Stycue.Api.Data
                     .WithMany()
                     .HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => new
+                {
+                    x.ReferenceType,
+                    x.ReferenceId
+                })
+                .HasDatabaseName("UX_PointTransactions_CommissionSettlement")
+                .IsUnique().HasFilter("[ReferenceType] = 1 AND [TransactionType] IN (5, 6, 7)");
             });
 
             modelBuilder.Entity<DailyPointClaim>(entity =>
