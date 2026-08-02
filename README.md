@@ -47,7 +47,7 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 
 - 以 SearchDocument 將貼文與委託建立統一搜尋讀模型，避免跨多個交易資料表進行複雜搜尋。
 - Fashion Dictionary 提供受控同義詞擴展；ISearchCandidateProvider 保留 MVP Candidate Ranking 與 SQL Server Full-Text Search 的可替換邊界。
-- 目前使用 SQL Server CONTAINSTABLE relevance rank 進行分頁與相關性排序。
+- 目前使用 MVP Candidate Ranking 進行分頁與相關性排序。
 
 #### 安全與外部(第三方)服務整合
 
@@ -77,7 +77,7 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
       │     │                 │
   SQL Server SearchDocument Google / Azure Blob / ECPay
             │
-  SQL Full-Text Search
+  SQL Full-Text Search or Mvp Candidate Ranking
 ```
 
 ### API Documentation
@@ -135,7 +135,7 @@ This repository showcases the project's ASP.NET Core Web API **backend**, featur
 
 - SearchDocument projects posts and commissions into a unified search read model, avoiding complex searches across multiple transactional tables.
 - Fashion Dictionary provides controlled synonym expansion, while ISearchCandidateProvider keeps MVP Candidate Ranking and SQL Server Full-Text Search behind a replaceable boundary.
-- The active provider uses SQL Server CONTAINSTABLE relevance ranking with pagination.
+- The active provider uses MVP Candidate Ranking for pagination and relevance ranking.
 
 #### Security and External Integrations
 
@@ -166,7 +166,7 @@ This repository showcases the project's ASP.NET Core Web API **backend**, featur
       │     │                 │
   SQL Server SearchDocument Google / Azure Blob / ECPay
             │
-  SQL Full-Text Search
+  SQL Full-Text Search or Mvp Candidate Ranking
 ```
 
 ### API Documentation
