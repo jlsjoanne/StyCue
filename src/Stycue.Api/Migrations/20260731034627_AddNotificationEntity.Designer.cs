@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Stycue.Api.Data;
 
@@ -11,9 +12,11 @@ using Stycue.Api.Data;
 namespace Stycue.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260731034627_AddNotificationEntity")]
+    partial class AddNotificationEntity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -117,11 +120,6 @@ namespace Stycue.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("ExpirationCycle")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
-
                     b.Property<DateTime>("ExpiredAt")
                         .HasColumnType("datetime2");
 
@@ -137,12 +135,6 @@ namespace Stycue.Api.Migrations
 
                     b.Property<DateTime?>("RewardSettledAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -457,8 +449,7 @@ namespace Stycue.Api.Migrations
                     b.HasIndex("ActorUserId");
 
                     b.HasIndex("RecipientUserId", "DeduplicationKey")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Notifications_RecipientUserId_DeduplicationKey");
+                        .IsUnique();
 
                     b.HasIndex("RecipientUserId", "IsRead", "CreatedAt");
 
@@ -679,11 +670,6 @@ namespace Stycue.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
-
-                    b.HasIndex("ReferenceType", "ReferenceId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_PointTransactions_CommissionSettlement")
-                        .HasFilter("[ReferenceType] = 1 AND [TransactionType] IN (5, 6, 7)");
 
                     b.ToTable("PointTransactions");
                 });

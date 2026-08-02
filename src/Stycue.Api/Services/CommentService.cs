@@ -1,12 +1,13 @@
-﻿using Stycue.Api.DTOs.Comm;
+﻿using AutoMapper;
+using Microsoft.EntityFrameworkCore;
+using Stycue.Api.Data;
+using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Comments;
 using Stycue.Api.Entities;
-using Stycue.Api.Services.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using Stycue.Api.Enums;
-using Stycue.Api.Data;
-using AutoMapper;
 using Stycue.Api.Extensions;
+using Stycue.Api.Services.Interfaces;
+using Stycue.Api.Services.Models;
 
 namespace Stycue.Api.Services
 {
@@ -14,15 +15,22 @@ namespace Stycue.Api.Services
     {
         private readonly AppDbContext _dbContext;
         private readonly IImageService _imageService;
+        private readonly INotificationService _notificationService;
         private readonly IImageResponseBuilder _imageResponseBuilder;
         private readonly IMapper _mapper;
+        private readonly ILogger<CommentService> _logger;
 
-        public CommentService(AppDbContext dbContext, IImageService imageService, IImageResponseBuilder imageResponseBuilder, IMapper mapper)
+        public CommentService(
+            AppDbContext dbContext, IImageService imageService,
+            IImageResponseBuilder imageResponseBuilder, IMapper mapper,
+            INotificationService notificationService, ILogger<CommentService> logger)
         {
             _dbContext = dbContext;
             _imageService = imageService;
             _imageResponseBuilder = imageResponseBuilder;
             _mapper = mapper;
+            _notificationService = notificationService;
+            _logger = logger;
         }
 
         public async Task<ApiResponse<List<CommentResponse>>> GetCommissionCommentsAsync(
@@ -98,6 +106,13 @@ namespace Stycue.Api.Services
                     "委託建立者不可留言自己的委託", "COMMISSION_OWNER_CANNOT_COMMENT");
             }
 
+            var notificationContext = new CommissionNotificationContext
+            {
+                RecipientUserId = commission.UserId,
+                CommissionId = commission.Id,
+                CommissionTitle = commission.Title
+            };
+
             // 歷史委託仍可討論，因此不因委託狀態或到期時間阻擋新增留言
             // 保留作為若未來此規則有更動可直接開啟
             // -----------------------------------------
@@ -121,7 +136,8 @@ namespace Stycue.Api.Services
 
             // ----------------------------------------------------
 
-            return await CreateRootCommentAsync(userId, postId: null, commissionId: commission.Id,
+            return await CreateRootCommentAsync(userId, postId: null, commissionId: commission.Id, 
+                commissionNotificationContext: notificationContext,
                 request, cancellationToken);
         }
 
@@ -170,7 +186,7 @@ namespace Stycue.Api.Services
                     "找不到指定的貼文", "POST_NOT_FOUND");
             }
 
-            return await CreateRootCommentAsync(userId, post.Id, null, request, cancellationToken);
+            return await CreateRootCommentAsync(userId, post.Id, null, null, request, cancellationToken);
         }
 
         public async Task<ApiResponse<CommentResponse>> ReplyAsync(
@@ -443,7 +459,8 @@ namespace Stycue.Api.Services
         // 建立根留言、驗證圖片、綁圖片、儲存、查單筆 response
         // CreateForCommissionAsync / CreateForPostAsync共用
         private async Task<ApiResponse<CommentResponse>> CreateRootCommentAsync(
-            int userId, int? postId, int? commissionId, UpsertCommentRequest request, CancellationToken cancellationToken)
+            int userId, int? postId, int? commissionId, CommissionNotificationContext? commissionNotificationContext,
+            UpsertCommentRequest request, CancellationToken cancellationToken)
         {
             if(postId.HasValue == commissionId.HasValue)
             {
@@ -489,6 +506,27 @@ namespace Stycue.Api.Services
             SetCommentImages(comment, imageResult.Data ?? [], replaceExisting: false);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            if( commissionNotificationContext != null)
+            {
+                try
+                {
+                    await _notificationService.CreateCommissionCommentCreatedAsync(
+                    commissionNotificationContext, userId, comment.Id, cancellationToken);
+
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                }
+                catch(OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch(Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Commission comment notification was not created. CommissionId: {CommissionId}, CommentId: {CommentId}",
+                        commissionId, comment.Id);
+                }
+            }
 
             var commentForResponse = await FindCommentForResponseAsync(comment.Id, cancellationToken);
 

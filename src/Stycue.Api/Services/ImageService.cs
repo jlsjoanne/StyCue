@@ -6,6 +6,8 @@ using Stycue.Api.Enums;
 using Stycue.Api.Services.Models;
 using Stycue.Api.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Stycue.Api.Options;
 
 namespace Stycue.Api.Services
 {
@@ -14,14 +16,17 @@ namespace Stycue.Api.Services
         private readonly AppDbContext _dbContext;
         private readonly IBlobStorageService _blobStorageService;
         private readonly ILogger<ImageService> _logger;
+        private readonly IOptions<ImageUploadOptions> _imageUploadOptions;
 
         private static readonly HashSet<string> AllowedFileExtensions = new HashSet<string> { ".jpg", ".jpeg", ".png", ".webp" };
 
-        public ImageService(AppDbContext dbContext, IBlobStorageService blobStorageService, ILogger<ImageService> logger)
+        public ImageService(AppDbContext dbContext, IBlobStorageService blobStorageService,
+            ILogger<ImageService> logger, IOptions<ImageUploadOptions> imageUploadOptions)
         {
             _dbContext = dbContext;
             _blobStorageService = blobStorageService;
             _logger = logger;
+            _imageUploadOptions = imageUploadOptions;
         }
 
         public Task<ApiResponse<ImageResponse>> UploadCommissionImageAsync(
@@ -344,6 +349,28 @@ namespace Stycue.Api.Services
             }
 
             var now = DateTime.UtcNow;
+
+            var todayStartUtc = now.Date;
+            var tomorrowStartUtc = todayStartUtc.AddDays(1);
+
+            var todayImages = await _dbContext.ImageAssets.AsNoTracking()
+                .Where(i => i.OwnerUserId == userId && i.CreatedAt >= todayStartUtc && i.CreatedAt < tomorrowStartUtc)
+                .ToListAsync(cancellationToken);
+
+            var currentCount = todayImages.Count;
+            var currentTotalBytes = todayImages.Sum(i => i.FileSize);
+
+            var options = _imageUploadOptions.Value;
+
+            if(currentCount >= options.DailyMaxImageCount)
+            {
+                return ApiResponse<ImageResponse>.FailResult("今日圖片上傳數量已達上限", "IMAGE_DAILY_COUNT_LIMIT_EXCEEDED");
+            }
+            if(currentTotalBytes + request.File.Length > options.DailyMaxTotalBytes)
+            {
+                return ApiResponse<ImageResponse>.FailResult("今日圖片上傳容量已達上限", "IMAGE_DAILY_SIZE_LIMIT_EXCEEDED");
+            }
+
             var extension = Path.GetExtension(request.File.FileName);
             var blobName = $"{folder}/{userId}/{now:yyyy}/{now:MM}/{Guid.NewGuid():N}{extension}";
 

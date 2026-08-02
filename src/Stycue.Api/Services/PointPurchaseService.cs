@@ -19,6 +19,7 @@ namespace Stycue.Api.Services
         private readonly AppDbContext _dbContext;
         private readonly IEcpayPaymentGateway _ecpayPaymentGateway;
         private readonly IPointService _pointService;
+        private readonly INotificationService _notificationService;
         private readonly IOptions<EcpayOptions> _options;
         private readonly IMapper _mapper;
         private readonly ILogger<PointPurchaseService> _logger;
@@ -27,7 +28,7 @@ namespace Stycue.Api.Services
             AppDbContext dbContext,
             IEcpayPaymentGateway ecpayPaymentGateway,
             IPointService pointService, IOptions<EcpayOptions> options,
-            IMapper mapper, ILogger<PointPurchaseService> logger)
+            IMapper mapper, ILogger<PointPurchaseService> logger, INotificationService notificationService)
         {
             ArgumentNullException.ThrowIfNull(options);
             _dbContext = dbContext;
@@ -36,6 +37,7 @@ namespace Stycue.Api.Services
             _options = options;
             _mapper = mapper;
             _logger = logger;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<List<PointProductResponse>>> GetProductsAsync(
@@ -411,65 +413,85 @@ namespace Stycue.Api.Services
 
             var orderId = order.Id;
 
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await using (var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
+            {
+                try
+                {
+                    order.Status = PointPurchaseStatus.Paid;
+                    order.ProviderTradeNo = queryResult.TradeNo;
+                    order.PaidAt = paidAtUtc;
+                    order.UpdatedAt = DateTime.UtcNow;
+
+                    // 先儲存訂單狀態，讓 RowVersion 成為第一道 concurrency guard。
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+
+                    var description = string.IsNullOrWhiteSpace(order.PointProduct?.Name)
+                        ? "購買點數" : $"購買點數 : {order.PointProduct.Name}";
+
+                    var pointResult = await _pointService.AddPointsAsync(
+                        order.UserId, order.Points,
+                        PointTransactionType.PointPurchase, PointReferenceType.PointPurchaseOrder,
+                        order.Id, description, cancellationToken);
+
+                    if (!pointResult.Success)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return ApiResponse<object>.FailResult(pointResult.Message, pointResult.ErrorCode);
+                    }
+
+                    // AddPointsAsync 的 SaveChangesAsync 會在同一個 scoped DbContext 
+                    // 同一個 transaction 中寫入錢包與 PointTransaction
+                    await transaction.CommitAsync(cancellationToken);
+                }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+
+                    _logger.LogWarning(
+                        ex, "Point purchase payment concurrency conflict. OrderId: {OrderId}", orderId);
+
+                    _dbContext.ChangeTracker.Clear();
+
+                    var latestOrder = await _dbContext.PointPurchaseOrders
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+
+                    if (latestOrder?.Status == PointPurchaseStatus.Paid)
+                    {
+                        return ApiResponse<object>.SuccessResult(
+                            new { OrderId = orderId }, "訂單已完成付款");
+                    }
+
+                    return ApiResponse<object>.FailResult(
+                        "付款入帳發生併發衝突，請稍後查詢訂單狀態", "POINT_PURCHASE_CONCURRENCY_CONFLICT");
+                }
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
+            }
+
+
+            var productName = string.IsNullOrWhiteSpace(order.PointProduct?.Name)
+                    ? "購買點數" : order.PointProduct.Name;
 
             try
             {
-                order.Status = PointPurchaseStatus.Paid;
-                order.ProviderTradeNo = queryResult.TradeNo;
-                order.PaidAt = paidAtUtc;
-                order.UpdatedAt = DateTime.UtcNow;
+                await _notificationService.CreatePointPurchaseSucceededAsync(
+                    order.UserId, order.Id, productName, order.Points, cancellationToken);
 
-                // 先儲存訂單狀態，讓 RowVersion 成為第一道 concurrency guard。
+                // NotificationService 只加入 ChangeTracker，仍需儲存。
                 await _dbContext.SaveChangesAsync(cancellationToken);
-
-                var description = string.IsNullOrWhiteSpace(order.PointProduct?.Name)
-                    ? "購買點數" : $"購買點數 : {order.PointProduct.Name}";
-
-                var pointResult = await _pointService.AddPointsAsync(
-                    order.UserId, order.Points,
-                    PointTransactionType.PointPurchase, PointReferenceType.PointPurchaseOrder,
-                    order.Id, description, cancellationToken);
-
-                if(!pointResult.Success)
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                    return ApiResponse<object>.FailResult(pointResult.Message, pointResult.ErrorCode);
-                }
-
-                // AddPointsAsync 的 SaveChangesAsync 會在同一個 scoped DbContext 
-                // 同一個 transaction 中寫入錢包與 PointTransaction
-                await transaction.CommitAsync(cancellationToken);
-
-                return ApiResponse<object>.SuccessResult(new { OrderId = orderId }, "付款成功，點數已入帳");
             }
-            catch (DbUpdateConcurrencyException ex)
+            catch (Exception ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
-
-                _logger.LogWarning(
-                    ex, "Point purchase payment concurrency conflict. OrderId: {OrderId}", orderId);
-
-                _dbContext.ChangeTracker.Clear();
-
-                var latestOrder = await _dbContext.PointPurchaseOrders
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-
-                if(latestOrder?.Status == PointPurchaseStatus.Paid)
-                {
-                    return ApiResponse<object>.SuccessResult(
-                        new { OrderId = orderId }, "訂單已完成付款");
-                }
-
-                return ApiResponse<object>.FailResult(
-                    "付款入帳發生併發衝突，請稍後查詢訂單狀態", "POINT_PURCHASE_CONCURRENCY_CONFLICT");
+                _logger.LogError(ex,
+                    "Point purchase notification was not created. OrderId: {OrderId}, UserId: {UserId}",
+                    order.Id, order.UserId);
             }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
+
+            return ApiResponse<object>.SuccessResult(new { OrderId = orderId }, "付款成功，點數已入帳");
         }
     }
 }

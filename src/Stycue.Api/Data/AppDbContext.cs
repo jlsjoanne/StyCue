@@ -42,6 +42,8 @@ namespace Stycue.Api.Data
 
         public DbSet<SearchHistory> SearchHistories => Set<SearchHistory>();
 
+        public DbSet<Notification> Notifications => Set<Notification>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -85,6 +87,12 @@ namespace Stycue.Api.Data
                     .WithMany()
                     .HasForeignKey(x => x.AwardedCommentId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.Property(c => c.RowVersion)
+                    .IsRowVersion()
+                    .IsConcurrencyToken();
+
+                entity.Property(c => c.ExpirationCycle).HasDefaultValue(1);
             });
 
             modelBuilder.Entity<CommissionRepost>(entity =>
@@ -246,6 +254,14 @@ namespace Stycue.Api.Data
                     .WithMany()
                     .HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => new
+                {
+                    x.ReferenceType,
+                    x.ReferenceId
+                })
+                .HasDatabaseName("UX_PointTransactions_CommissionSettlement")
+                .IsUnique().HasFilter("[ReferenceType] = 1 AND [TransactionType] IN (5, 6, 7)");
             });
 
             modelBuilder.Entity<DailyPointClaim>(entity =>
@@ -424,6 +440,32 @@ namespace Stycue.Api.Data
 
                 entity.HasOne(x => x.User).WithMany()
                     .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.Property(x => x.DeduplicationKey).IsRequired().HasMaxLength(200);
+
+                entity.HasIndex(x => new
+                {
+                    x.RecipientUserId,
+                    x.DeduplicationKey
+                })
+                .HasDatabaseName("UX_Notifications_RecipientUserId_DeduplicationKey")
+                .IsUnique();
+
+                entity.HasIndex(x => new
+                {
+                    x.RecipientUserId,
+                    x.IsRead,
+                    x.CreatedAt
+                });
+
+                entity.HasOne(x => x.RecipientUser).WithMany()
+                    .HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(x => x.ActorUser).WithMany()
+                    .HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
             });
         }
     }
