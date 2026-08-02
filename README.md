@@ -72,9 +72,8 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 
 ### API Documentation
 
-目前可透過 [StyCue Scalar API Documentation](https://stycue.rocket-coding.com/api-docs/) 瀏覽 API 文件，包含 endpoint 分類、request／response contract、HTTP Status Codes 與 JWT Bearer Authentication 設定。
-
-> 此文件目前由 Staging 環境提供；VM 停用後將以 repository 內的靜態 API 文件與截圖保存展示成果。
+StyCue API 已整合 [Scalar API Documentation](https://stycue.rocket-coding.com/api-docs)，提供 endpoint 分類、request／response contract、HTTP Status Codes 與 JWT Bearer Authentication 設定。
+可前往 [API 文件](https://stycue.rocket-coding.com/api-docs) 瀏覽完整內容。
 
 ### API Resources
 
@@ -152,9 +151,8 @@ This repository showcases the project's ASP.NET Core Web API **backend**, featur
 
 ### API Documentation
 
-The interactive [StyCue Scalar API Documentation](https://stycue.rocket-coding.com/api-docs/) currently provides endpoint grouping, request/response contracts, HTTP status codes, and JWT Bearer authentication configuration.
-
-> The documentation is currently served from the Staging environment. When the VM is retired, static API documentation and screenshots will be preserved in this repository.
+StyCue integrates [Scalar API Documentation](https://stycue.rocket-coding.com/api-docs), including endpoint grouping, request/response contracts, HTTP status codes, and JWT Bearer authentication configuration.
+Visit the [API documentation](https://stycue.rocket-coding.com/api-docs) for the full reference.
 
 ### API Resources
 
