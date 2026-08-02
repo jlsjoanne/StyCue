@@ -29,5 +29,8 @@
 
         // 可以提前結束委託時間限定
         public int EarlyCloseLimitHours { get; set; } = 12;
+
+        // 可以選最佳留言的時間設定
+        public int BestCommentSelectionGraceHours { get; set; } = 24;
     }
 }

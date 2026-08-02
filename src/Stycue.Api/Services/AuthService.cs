@@ -7,6 +7,8 @@ using Stycue.Api.Entities;
 using Stycue.Api.Services.Interfaces;
 using Stycue.Api.Services.Models;
 using Stycue.Api.Constants;
+using Microsoft.Extensions.Options;
+using Stycue.Api.Options;
 
 namespace Stycue.Api.Services
 {
@@ -17,18 +19,29 @@ namespace Stycue.Api.Services
         private readonly IJwtTokenService _jwtTokenService;
         private readonly IGoogleAuthService _googleAuthService;
         private readonly IPointService _pointService;
+        private readonly IOptions<RegistrationOptions> _registrationOptions;
 
-        public AuthService(AppDbContext appDbContext, IPasswordService passwordService, IJwtTokenService jwtTokenService, IGoogleAuthService googleAuthService, IPointService pointService)
+        public AuthService(
+            AppDbContext appDbContext, IPasswordService passwordService,
+            IJwtTokenService jwtTokenService, IGoogleAuthService googleAuthService, IPointService pointService,
+            IOptions<RegistrationOptions> registrationOptions)
         {
             _dbContext = appDbContext;
             _passwordService = passwordService;
             _jwtTokenService = jwtTokenService;
             _googleAuthService = googleAuthService;
             _pointService = pointService;
+            _registrationOptions = registrationOptions;
         }
 
         public async Task<ApiResponse<RegisterResponse>> RegisterAsync(RegisterRequest request)
         {
+            if(!_registrationOptions.Value.Enabled)
+            {
+                return ApiResponse<RegisterResponse>.FailResult(
+                    "目前暫停新帳號註冊。", "REGISTRATION_DISABLED");
+            }
+
             // check Request data
             if (request == null)
             {
@@ -173,15 +186,43 @@ namespace Stycue.Api.Services
                 return ApiResponse<LoginResponse>.FailResult("此帳號目前無法使用，請聯繫客服或管理員", AuthErrorCodes.AccountDeactivated);
             }
 
-            if(user != null && String.IsNullOrWhiteSpace(user.GoogleSub))
+            if (user != null && !string.IsNullOrWhiteSpace(user.GoogleSub) && user.GoogleSub != googlePayload.GoogleSub)
             {
+                return ApiResponse<LoginResponse>.FailResult(
+                    "此 Email 已綁定其他 Google 帳號", AuthErrorCodes.GoogleTokenInvalid);
+            }
+
+            var googleSubLinked = false;
+
+            if(user != null && string.IsNullOrWhiteSpace(user.GoogleSub))
+            {
+                if(!googlePayload.IsEmailVerified)
+                {
+                    return ApiResponse<LoginResponse>.FailResult(
+                        "Google Email 尚未驗證", AuthErrorCodes.GoogleTokenInvalid);
+                }
+
                 user.GoogleSub = googlePayload.GoogleSub;
                 user.IsEmailVerified = googlePayload.IsEmailVerified;
                 user.UpdatedAt = DateTime.UtcNow;
+                googleSubLinked = true;
             }
 
-            if(user == null)
+            var isNewUser = user == null;
+
+            if(isNewUser)
             {
+                if(!googlePayload.IsEmailVerified)
+                {
+                    return ApiResponse<LoginResponse>.FailResult(
+                        "Google Email 尚未驗證", AuthErrorCodes.GoogleTokenInvalid);
+                }
+
+                if(!_registrationOptions.Value.AllowGoogleAutoProvisioning)
+                {
+                    return ApiResponse<LoginResponse>.FailResult("目前未開放 Google 新帳號註冊", AuthErrorCodes.RegistrationDisabled);
+                }
+
                 user = new User
                 {
                     Email = normalizedEmail,
@@ -196,6 +237,16 @@ namespace Stycue.Api.Services
                 await _dbContext.SaveChangesAsync();
 
                 await _pointService.GrantRegistrationRewardAsync(user.Id);
+            }
+
+            if( !isNewUser && googleSubLinked)
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+
+            if( user == null)
+            {
+                return ApiResponse<LoginResponse>.FailResult("Google 登入失敗", AuthErrorCodes.GoogleTokenInvalid);
             }
 
             // create JwtPayload
