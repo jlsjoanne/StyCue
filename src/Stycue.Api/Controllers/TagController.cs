@@ -37,6 +37,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">查詢來源或標籤分類不合法。</response>
         /// <response code="401">查詢 MyFrequent 但未登入。</response>
         [HttpGet]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<List<TagResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<List<TagResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<List<TagResponse>>), StatusCodes.Status401Unauthorized)]

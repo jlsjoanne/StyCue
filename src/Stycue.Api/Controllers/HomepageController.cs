@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Stycue.Api.Services.Interfaces;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Homepage;
 using Stycue.Api.Extensions;
+using Stycue.Api.Services.Interfaces;
 
 namespace Stycue.Api.Controllers
 {
@@ -65,6 +66,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">查詢條件不合法，例如 sortBy 或 filter 不支援。</response>
         /// <response code="500">首頁列表查詢時發生未預期錯誤。</response>
         [HttpGet]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status500InternalServerError)]

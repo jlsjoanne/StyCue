@@ -5,6 +5,7 @@ using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Commissions;
 using Stycue.Api.Options;
 using Stycue.Api.Services.Interfaces;
+using Stycue.Api.Services.Models;
 using Stycue.Api.Entities;
 using Stycue.Api.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ using Stycue.Api.Enums;
 using Stycue.Api.DTOs.Images;
 using Stycue.Api.DTOs.Tags;
 using Stycue.Api.DTOs.Points;
+using Microsoft.Data.SqlClient;
 
 namespace Stycue.Api.Services
 {
@@ -22,6 +24,7 @@ namespace Stycue.Api.Services
         private readonly IPointService _pointService;
         private readonly IImageService _imageService;
         private readonly IFollowService _followService;
+        private readonly INotificationService _notificationService;
         private readonly IImageResponseBuilder _imageResponseBuilder;
         private readonly IUserSummaryResponseBuilder _userSummaryResponseBuilder;
         private readonly IMapper _mapper;
@@ -34,7 +37,7 @@ namespace Stycue.Api.Services
             IImageService imageService, IImageResponseBuilder imageResponseBuilder, 
             IUserSummaryResponseBuilder userSummaryResponseBuilder,
             IMapper mapper, IOptions<PointsOptions> pointoptions, ILogger<CommissionService> logger,
-            ISearchDocumentProjector searchDocumentProjector)
+            ISearchDocumentProjector searchDocumentProjector, INotificationService notificationService)
         {
             _dbContext = dbContext;
             _tagService = tagService;
@@ -47,6 +50,7 @@ namespace Stycue.Api.Services
             _pointOptions = pointoptions;
             _logger = logger;
             _searchDocumentProjector = searchDocumentProjector;
+            _notificationService = notificationService;
         }
 
         // Interface Public Methods
@@ -233,7 +237,7 @@ namespace Stycue.Api.Services
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollbackEx)
                 {
@@ -379,6 +383,11 @@ namespace Stycue.Api.Services
                         refundResult.Message, refundResult.ErrorCode);
                 }
 
+                var notificationContext = BuildNotificationContext(commission, commission.UserId);
+
+                await _notificationService.CreateCommissionEarlyCloseRefundedAsync(
+                    notificationContext, refundPoints, cancellationToken);
+
                 await _dbContext.SaveChangesAsync(cancellationToken);
 
                 await _searchDocumentProjector.HideCommissionAsync(commission.Id, cancellationToken);
@@ -396,11 +405,22 @@ namespace Stycue.Api.Services
 
                 return ApiResponse<CloseCommissionResponse>.SuccessResult(response, "委託已關閉，積分已退還");
             }
+            catch (DbUpdateException ex) when (IsCommissionSettlementUniqueConstraintViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(ex,
+                    "Close commission lost settlement/refund race. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CloseCommissionResponse>.FailResult(
+                    "此委託已由其他流程完成結算或退款，請重新整理後查看結果", "COMMISSION_SETTLEMENT_CONFLICT");
+            }
             catch (Exception ex)
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch (Exception rollbackEx)
                 {
@@ -510,14 +530,15 @@ namespace Stycue.Api.Services
                 }
 
                 var now = DateTime.UtcNow;
-                var isExpired = IsExpired(commission, now);
 
-                var hasActiveComments = await _dbContext.Comments.AnyAsync(c =>
+                var hasEligibleRootComments = await _dbContext.Comments.AnyAsync(c =>
                     c.CommissionId == commission.Id &&
-                    c.DeletedAt == null, cancellationToken);
+                    c.ParentCommentId == null &&
+                    c.DeletedAt == null &&
+                    c.CreatedAt < commission.ExpiredAt, cancellationToken);
                 var hasExistingRepost = commission.Reposts.Any();
 
-                if( !CanRepost(commission, isOwner: true, isExpired, hasActiveComments, hasExistingRepost))
+                if( !CanRepost(commission, isOwner: true, now, hasEligibleRootComments, hasExistingRepost))
                 {
                     return ApiResponse<CommissionDetailResponse>.FailResult(
                         "目前委託狀態無法重新開啟", "COMMISSION_CANNOT_REPOST");
@@ -556,6 +577,7 @@ namespace Stycue.Api.Services
                 // update commission
                 commission.Points += request.AdditionalPoints;
                 commission.RepostCount += 1;
+                commission.ExpirationCycle = 2;
                 commission.Status = CommissionStatus.Open;
                 commission.ExpiredAt = now.AddDays(_pointOptions.Value.DefaultCommissionExtendDays);
                 commission.UpdatedAt = now;
@@ -567,31 +589,31 @@ namespace Stycue.Api.Services
                 await transaction.CommitAsync(cancellationToken);
 
             }
-            catch(DbUpdateException dbex)
+            catch (DbUpdateConcurrencyException ex)
             {
-                try
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                }
-                catch(Exception rollbackex)
-                {
-                    _logger.LogError(rollbackex,
-                        "Rollback repost commission transaction failed after db update exception. CommissionId: {CommissionId}, UserId: {UserId}",
-                        commissionId, userId);
-                }
+                await transaction.RollbackAsync(CancellationToken.None);
 
-                _logger.LogWarning(dbex,
-                    "Repost commission db update failed. Possible duplicate repost. CommissionId: {CommissionId}, UserId: {UserId}",
-                    commissionId, userId);
+                _logger.LogInformation(ex,
+                    "Repost lost concurrency race. CommissionId: {CommissionId}", commissionId);
 
-                return ApiResponse<CommissionDetailResponse>.FailResult("此委託已重新開啟過，無法再次重新開啟",
-                    "COMMISSION_REPOST_LIMIT_REACHED");
+                return ApiResponse<CommissionDetailResponse>.FailResult(
+                    "此委託已由其他流程處理，無法重新開啟", "COMMISSION_SETTLEMENT_CONFLICT");
+            }
+            catch(DbUpdateException dbex) when (IsCommissionRepostUniqueConstraintViolation(dbex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(dbex,
+                    "Commission repost already exists. CommissionId: {CommissionId}", commissionId);
+
+                return ApiResponse<CommissionDetailResponse>.FailResult(
+                    "此委託已重新開啟過，無法再次重新開啟", "COMMISSION_REPOST_LIMIT_REACHED");
             }
             catch(Exception ex)
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollbackex)
                 {
@@ -678,13 +700,17 @@ namespace Stycue.Api.Services
                 var ownerError = OwnershipGuard.EnsureOwner<BoostCommissionResponse>(
                     commission.UserId, userId, "只有委託建立者可以加碼委託", "COMMISSION_NOT_OWNER");
 
-                if(ownerError != null)
+                var now = DateTime.UtcNow;
+
+                var isFirstExpirationGracePeriod = IsWithinFirstExpirationGracePeriod(commission, now);
+
+                if (ownerError != null)
                 {
                     return ownerError;
                 }
 
                 // check if commission can be boosted
-                if( !CanBoost(commission, isOwner: true))
+                if( !CanBoost(commission, isOwner: true, now))
                 {
                     return ApiResponse<BoostCommissionResponse>.FailResult(
                         "目前委託狀態無法加碼", "COMMISSION_CANNOT_BOOST");
@@ -700,13 +726,16 @@ namespace Stycue.Api.Services
                     return ApiResponse<BoostCommissionResponse>.FailResult(spendResult.Message, spendResult.ErrorCode);
                 }
 
-                var now = DateTime.UtcNow;
-
                 // update commission status
                 commission.Points += request.AdditionalPoints;
                 commission.Status = CommissionStatus.Open;
                 commission.ExpiredAt = now.AddDays(_pointOptions.Value.DefaultCommissionExtendDays);
                 commission.UpdatedAt = now;
+
+                if (isFirstExpirationGracePeriod)
+                {
+                    commission.ExpirationCycle = 2;
+                }
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -726,11 +755,21 @@ namespace Stycue.Api.Services
 
                 return ApiResponse<BoostCommissionResponse>.SuccessResult(response, "委託加碼成功");
             }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(ex,
+                    "Boost lost concurrency race. CommissionId: {CommissionId}", commissionId);
+
+                return ApiResponse<BoostCommissionResponse>.FailResult(
+                    "此委託已由其他流程處理，無法加碼", "COMMISSION_SETTLEMENT_CONFLICT");
+            }
             catch(Exception ex)
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollEx)
                 {
@@ -801,8 +840,11 @@ namespace Stycue.Api.Services
                 // get commission
                 var commission = await FindCommissionForUpdateAsync(commissionId, cancellationToken);
 
+                // set current time
+                var now = DateTime.UtcNow;
+
                 // check commission
-                if( commission == null)
+                if ( commission == null)
                 {
                     return ApiResponse<CommissionRewardResponse>.FailResult(
                         "找不到指定的委託文", "COMMISSION_NOT_FOUND");
@@ -843,7 +885,7 @@ namespace Stycue.Api.Services
                 }
 
                 // final check
-                if( !CanSelectBestComment(commission, isOwner: true))
+                if( !CanSelectBestComment(commission, isOwner: true, now))
                 {
                     return ApiResponse<CommissionRewardResponse>.FailResult(
                         "目前委託狀態無法選擇最佳留言", "COMMISSION_CANNOT_SELECT_BEST_COMMENT");
@@ -914,7 +956,7 @@ namespace Stycue.Api.Services
                 }
 
                 // update commission status
-                var now = DateTime.UtcNow;
+                
 
                 commission.Status = CommissionStatus.Rewarded;
                 commission.Points = awardBestCommentPoints;
@@ -922,6 +964,11 @@ namespace Stycue.Api.Services
                 commission.AwardedAt = now;
                 commission.RewardSettledAt = now;
                 commission.UpdatedAt = now;
+
+                var notificationContext = BuildNotificationContext(commission, awardedComment.UserId);
+
+                await _notificationService.CreateCommissionManualRewardGrantedAsync(
+                    notificationContext, commission.UserId, rewardPoints, cancellationToken);
 
                 // save to db
                 await _dbContext.SaveChangesAsync(cancellationToken);
@@ -933,11 +980,33 @@ namespace Stycue.Api.Services
                 return ApiResponse<CommissionRewardResponse>.SuccessResult(response,
                     "最佳留言已選擇，積分已發放");
             }
+            catch(DbUpdateConcurrencyException ex)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(ex,
+                    "Best-comment settlement lost concurrency race. CommissionId: {CommissionId}",
+                    commissionId);
+
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "此委託已由其他流程完成結算，請重新整理後查看結果", "COMMISSION_SETTLEMENT_CONFLICT");
+            }
+            catch(DbUpdateException ex) when (IsCommissionSettlementUniqueConstraintViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(ex,
+                    "Best-comment settlement duplicate transaction prevented. CommissionId: {CommissionId}, UserId: {UserId}, CommentId: {CommentId}",
+                    commissionId, userId, request?.CommentId);
+
+                return ApiResponse<CommissionRewardResponse>.FailResult(
+                    "此委託已由其他流程完成結算，請重新整理後查看結果", "COMMISSION_SETTLEMENT_CONFLICT");
+            }
             catch(Exception ex)
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollEx)
                 {
@@ -959,17 +1028,28 @@ namespace Stycue.Api.Services
 
         // private helper methods
 
+
+        //Validations
         // 委託文是否到期
         private static bool IsExpired(Commission commission, DateTime now)
         {
             return commission.ExpiredAt <= now;
         }
 
-        // 委託文是否可以Repost
-        private static bool CanRepost(Commission commission, bool isOwner, bool isExpired,
-            bool hasActiveComments, bool hasExistingReposts)
+        // 委託文是否是第一次到期
+        private bool IsWithinFirstExpirationGracePeriod(
+            Commission commission, DateTime now)
         {
-            return isOwner && isExpired && !hasActiveComments && !hasExistingReposts &&
+            return commission.ExpirationCycle == 1 && IsWithinBestCommentSelectionGracePeriod(commission, now);
+        }
+
+        // 委託文是否可以Repost
+        private bool CanRepost(Commission commission, bool isOwner, DateTime now,
+            bool hasEligibleRootComments, bool hasExistingReposts)
+        {
+            return isOwner &&
+                IsWithinFirstExpirationGracePeriod(commission, now) &&
+                !hasEligibleRootComments && !hasExistingReposts &&
                 commission.Status != CommissionStatus.Closed &&
                 commission.Status != CommissionStatus.Rewarded &&
                 commission.Status != CommissionStatus.NoAward &&
@@ -981,9 +1061,11 @@ namespace Stycue.Api.Services
 
         // 委託文是否可以Boost
 
-        private static bool CanBoost(Commission commission, bool isOwner)
+        private bool CanBoost(Commission commission, bool isOwner, DateTime now)
         {
             return isOwner &&
+                commission.ExpirationCycle == 1 &&
+                (now < commission.ExpiredAt || IsWithinFirstExpirationGracePeriod(commission, now)) &&
                 commission.Status != CommissionStatus.Rewarded &&
                 commission.Status != CommissionStatus.Closed &&
                 commission.Status != CommissionStatus.NoAward &&
@@ -993,17 +1075,69 @@ namespace Stycue.Api.Services
                 commission.AwardedCommentId == null;
         }
 
+        // 委託文可選最佳留言的截止時間
+        private bool IsWithinBestCommentSelectionGracePeriod(Commission commission, DateTime now)
+        {
+            var graceHours = _pointOptions.Value.BestCommentSelectionGraceHours;
+            return commission.ExpiredAt <= now && now <= commission.ExpiredAt.AddHours(graceHours);
+        }
+
         // 委託文是否可以選最佳留言
 
-        private static bool CanSelectBestComment(Commission commission, bool isOwner)
+        private bool CanSelectBestComment(Commission commission, bool isOwner, DateTime now)
         {
             return isOwner &&
+                (commission.ExpirationCycle == 1 || commission.ExpirationCycle == 2) &&
+                IsWithinBestCommentSelectionGracePeriod(commission, now) &&
                 commission.AwardedCommentId == null &&
                 commission.RewardSettledAt == null &&
                 commission.Status != CommissionStatus.Closed &&
                 commission.Status != CommissionStatus.Rewarded &&
                 commission.Status != CommissionStatus.NoAward &&
-                commission.Comments.Any(comment => comment.DeletedAt == null && comment.ParentCommentId == null);
+                commission.Comments.Any(comment => 
+                    comment.DeletedAt == null && 
+                    comment.ParentCommentId == null &&
+                    comment.CreatedAt < commission.ExpiredAt);
+        }
+
+        // 確認DB unique error是否為結算衝突
+        // 2601：違反 unique index
+        // 2627：違反 unique constraint／unique index
+        // 檢查 index 名稱，避免把其他 unique constraint，例如 Repost 的唯一限制，誤判成結算衝突
+        private static bool IsCommissionSettlementUniqueConstraintViolation(DbUpdateException exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+
+            for(Exception? current = exception; current != null; current = current.InnerException)
+            {
+                if(current is SqlException sqlException &&
+                    (sqlException.Number == 2601 || sqlException.Number == 2627) &&
+                    sqlException.Message.Contains(
+                        "UX_PointTransactions_CommissionSettlement", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsCommissionRepostUniqueConstraintViolation(DbUpdateException exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+
+            for(Exception? current = exception; current != null; current = current.InnerException)
+            {
+                if (current is SqlException sqlException &&
+                    (sqlException.Number == 2601 || sqlException.Number == 2627) &&
+                    sqlException.Message.Contains(
+                        "IX_CommissionReposts_CommissionId", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // 查詢委託文詳情
@@ -1043,7 +1177,8 @@ namespace Stycue.Api.Services
                 comment.Id == commentId &&
                 comment.CommissionId == commission.Id &&
                 comment.ParentCommentId == null &&
-                comment.DeletedAt == null);
+                comment.DeletedAt == null &&
+                comment.CreatedAt < commission.ExpiredAt);
         }
 
         // 綁定標籤
@@ -1077,7 +1212,21 @@ namespace Stycue.Api.Services
                 image.CommissionRepostId = commissionRepostId;
             }
         }
-        
+
+        // 把Commission => CommissionNotificationContext
+        private static CommissionNotificationContext BuildNotificationContext(
+            Commission commission, int recipientUserId)
+        {
+            ArgumentNullException.ThrowIfNull(commission);
+
+            return new CommissionNotificationContext
+            {
+                RecipientUserId = recipientUserId,
+                CommissionId = commission.Id,
+                CommissionTitle = commission.Title
+            };
+        }
+
 
         // 建立Commission Response圖片
         private IReadOnlyList<ImageResponse> BuildOriginalCommissionImages(Commission commission)
@@ -1112,16 +1261,17 @@ namespace Stycue.Api.Services
             var isExpired = IsExpired(commission, now);
 
             var response = _mapper.Map<CommissionDetailResponse>(commission);
-            var hasActiveComments = commission.Comments.Any(c => c.DeletedAt == null);
+            var hasEligibleRootComments = commission.Comments.Any(c =>
+                c.DeletedAt == null && c.ParentCommentId == null && c.CreatedAt < commission.ExpiredAt);
             var hasExistingReposts = commission.Reposts.Any();
 
             response.Author = _userSummaryResponseBuilder.Build(commission.User);
 
             response.IsOwner = isOwner;
             response.IsExpired = isExpired;
-            response.CanBoost = CanBoost(commission, isOwner);
-            response.CanRepost = CanRepost(commission, isOwner, isExpired, hasActiveComments, hasExistingReposts);
-            response.CanSelectBestComment = CanSelectBestComment(commission, isOwner);
+            response.CanBoost = CanBoost(commission, isOwner, now);
+            response.CanRepost = CanRepost(commission, isOwner, now, hasEligibleRootComments, hasExistingReposts);
+            response.CanSelectBestComment = CanSelectBestComment(commission, isOwner, now);
 
             response.CommentCount = commission.Comments.Count(c => c.DeletedAt == null);
             response.LikeCount = commission.CommissionLikes.Count;
@@ -1169,7 +1319,9 @@ namespace Stycue.Api.Services
 
             return await _dbContext.PointTransactions
                 .AsNoTracking()
-                .Where(t => t.TransactionType == PointTransactionType.CommissionBestCommentReward &&
+                .Where(t => 
+                    (t.TransactionType == PointTransactionType.CommissionBestCommentReward ||
+                        t.TransactionType == PointTransactionType.CommissionAutoReward) &&
                     t.ReferenceType == PointReferenceType.Commission &&
                     t.ReferenceId == commission.Id)
                 .Select(t => (int?)t.Amount)

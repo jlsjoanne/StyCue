@@ -44,6 +44,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">貼文 ID 不合法。</response>
         /// <response code="404">找不到指定的貼文。</response>
         [HttpGet("{postId:int}")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<PostDetailResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<PostDetailResponse>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<PostDetailResponse>), StatusCodes.Status404NotFound)]

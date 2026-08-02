@@ -12,8 +12,8 @@ using Stycue.Api.Data;
 namespace Stycue.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260720092219_AddSearchDocumentFullTextIndex")]
-    partial class AddSearchDocumentFullTextIndex
+    [Migration("20260801120810_AddExpirationCycle")]
+    partial class AddExpirationCycle
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -120,6 +120,11 @@ namespace Stycue.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("ExpirationCycle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTime>("ExpiredAt")
                         .HasColumnType("datetime2");
 
@@ -135,6 +140,12 @@ namespace Stycue.Api.Migrations
 
                     b.Property<DateTime?>("RewardSettledAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -399,6 +410,63 @@ namespace Stycue.Api.Migrations
                     b.ToTable("ImageFashionMetadata");
                 });
 
+            modelBuilder.Entity("Stycue.Api.Entities.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeduplicationKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RecipientUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReferenceId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReferenceType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("RecipientUserId", "DeduplicationKey")
+                        .IsUnique();
+
+                    b.HasIndex("RecipientUserId", "IsRead", "CreatedAt");
+
+                    b.ToTable("Notifications");
+                });
+
             modelBuilder.Entity("Stycue.Api.Entities.PointProduct", b =>
                 {
                     b.Property<int>("Id")
@@ -613,6 +681,11 @@ namespace Stycue.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("ReferenceType", "ReferenceId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PointTransactions_CommissionSettlement")
+                        .HasFilter("[ReferenceType] = 1 AND [TransactionType] IN (5, 6, 7)");
 
                     b.ToTable("PointTransactions");
                 });
@@ -1165,6 +1238,24 @@ namespace Stycue.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("ImageAsset");
+                });
+
+            modelBuilder.Entity("Stycue.Api.Entities.Notification", b =>
+                {
+                    b.HasOne("Stycue.Api.Entities.User", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Stycue.Api.Entities.User", "RecipientUser")
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("RecipientUser");
                 });
 
             modelBuilder.Entity("Stycue.Api.Entities.PointPurchaseOrder", b =>

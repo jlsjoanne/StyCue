@@ -42,6 +42,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">貼文 ID 不合法，或留言目標不合法。</response>
         /// <response code="404">找不到指定的貼文。</response>
         [HttpGet("posts/{postId:int}/comments")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<List<CommentResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<List<CommentResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<List<CommentResponse>>), StatusCodes.Status404NotFound)]
@@ -114,6 +115,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">委託文 ID 不合法，或留言目標不合法。</response>
         /// <response code="404">找不到指定的委託文。</response>
         [HttpGet("commissions/{commissionId:int}/comments")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<List<CommentResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<List<CommentResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<List<CommentResponse>>), StatusCodes.Status404NotFound)]
