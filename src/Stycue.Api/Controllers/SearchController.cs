@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Stycue.Api.DTOs.Comm;
 using Stycue.Api.DTOs.Homepage;
@@ -57,6 +58,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">搜尋 keyword、分頁條件或目前使用者 ID 不合法。</response>
         /// <response code="500">搜尋處理時發生未預期錯誤。</response>
         [HttpGet]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<HomepageItemResponse>>), StatusCodes.Status500InternalServerError)]

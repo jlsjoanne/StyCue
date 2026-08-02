@@ -66,6 +66,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">目標使用者 ID 或目前使用者 ID 不合法。</response>
         /// <response code="404">找不到指定的使用者。</response>
         [HttpGet("{targetUserId:int}/profile")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<PublicUserProfileResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<PublicUserProfileResponse>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<PublicUserProfileResponse>), StatusCodes.Status404NotFound)]
@@ -280,6 +281,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">目標使用者 ID 或目前使用者 ID 不合法。</response>
         /// <response code="404">找不到指定的使用者。</response>
         [HttpGet("{targetUserId:int}/followers")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<FollowUserResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<FollowUserResponse>>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<PagedResponse<FollowUserResponse>>), StatusCodes.Status404NotFound)]

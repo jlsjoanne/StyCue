@@ -41,6 +41,7 @@ namespace Stycue.Api.Controllers
         /// <response code="400">請求參數錯誤。</response>
         /// <response code="404">找不到指定的委託文。</response>
         [HttpGet("{commissionId:int}")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(ApiResponse<CommissionDetailResponse>),StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<CommissionDetailResponse>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<CommissionDetailResponse>), StatusCodes.Status404NotFound)]

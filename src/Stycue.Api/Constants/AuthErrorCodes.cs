@@ -5,5 +5,6 @@
         public const string InvalidCredentials = "INVALID_CREDENTIALS";
         public const string AccountDeactivated = "ACCOUNT_DEACTIVATED";
         public const string GoogleTokenInvalid = "GOOGLE_TOKEN_INVALID";
+        public const string RegistrationDisabled = "REGISTRATION_DISABLED";
     }
 }
