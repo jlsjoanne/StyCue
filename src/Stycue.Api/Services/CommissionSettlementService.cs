@@ -34,7 +34,48 @@ namespace Stycue.Api.Services
             // place holder
             int batchSize, CancellationToken cancellationToken)
         {
-            return new CommissionSettlementRunResult();
+            ValidateRunArgument(batchSize);
+            ValidateSettlementSettings();
+
+            var nowUtc = DateTime.UtcNow;
+
+            var candidateCommissionIds = await FindCandidateCommissionIdsAsync(nowUtc, batchSize, cancellationToken);
+            var processResults = new List<CommissionSettlementProcessResult>(candidateCommissionIds.Count);
+            var failedCount = 0;
+
+            foreach(var commissionId in candidateCommissionIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var processResult = await ProcessCommissionAsync(commissionId, nowUtc, cancellationToken);
+
+                    processResults.Add(processResult);
+                }
+                catch(OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch(Exception ex)
+                {
+                    failedCount += 1;
+
+                    _logger.LogError(ex,
+                        "Commission settlement processing failed. CommissionId: {CommissionId}",
+                        commissionId);
+                }
+            }
+
+            var runResult = BuildRunResult(candidateCommissionIds.Count, processResults, failedCount);
+
+            _logger.LogInformation(
+                "Commission settlement run completed. CandidateCount: {CandidateCount}, ProcessedCount: {ProcessedCount}," +
+                " SkippedCount: {SkippedCount}, AutoRewardedCount: {AutoRewardedCount}, RefundedCount: {RefundedCount}, FailedCount: {FailedCount}",
+                runResult.CandidateCount, runResult.ProcessedCount, runResult.SkippedCount,
+                runResult.AutoRewardedCount, runResult.RefundedCount, runResult.FailedCount);
+
+            return runResult;
         }
 
         // private
@@ -43,18 +84,40 @@ namespace Stycue.Api.Services
         private sealed record CommissionSettlementProcessResult(
             int CommissionId,
              bool WasProcessed,
-             bool ExpiredNotificationHandled,
-             bool FirstExpirationActionReminderHandled,
-             bool BestCommentSelectionReminderHandled,
+             bool ExpiredNotificationCreated,
+             bool FirstExpirationActionReminderCreated,
+             bool BestCommentSelectionReminderCreated,
              bool WasAutoRewarded,
              bool WasRefunded,
              bool WasSkipped);
 
         private sealed record ExpiredNotificationResult(
-            bool ExpiredNotificationHandled, bool FirstExpirationActionReminderHandled, bool BestCommentSelectionReminderHandled);
+            bool ExpiredNotificationCreated, 
+            bool FirstExpirationActionReminderCreated, bool BestCommentSelectionReminderCreated);
+
+        private sealed record AutomaticRewardSettlementResult(
+            int AwardedCommentId, int RecipientUserId, int RewardPoints, DateTime SettledAt);
+
+        private sealed record NoCommentSettlementResult(
+            int RecipientUserId, int RefundedPoints, DateTime SettledAt);
+
+        private sealed class CommissionSettlementWriteException : Exception
+        {
+            public int CommissionId { get; }
+            public string Operation { get; }
+            public string? ErrorCode { get; }
+
+            public CommissionSettlementWriteException(
+                int commissionId, string operation, string? errorCode, string message) : base(message)
+            {
+                CommissionId = commissionId;
+                Operation = operation;
+                ErrorCode = errorCode;
+            }
+        }
 
         // private helpers
-        
+
         // Validate
         private static void ValidateRunArgument(int batchSize)
         {
@@ -81,10 +144,10 @@ namespace Stycue.Api.Services
                     "Points:RefundPercent 必須介於 1 與 100");
             }
 
-            if( settings.FeePercent < 0 || settings.FeePercent > 100)
+            if( settings.FeePercent < 0 || settings.FeePercent >= 100)
             {
                 throw new InvalidOperationException(
-                    "Points:FeePercent 必須介於 0 與 100");
+                    "Points:FeePercent 必須介於 0 與 99");
             }
         }
 
@@ -139,7 +202,8 @@ namespace Stycue.Api.Services
             return eligibleRootComments.OrderByDescending(c => c.CommentLikes.Count)
                 .ThenBy(c => c.CreatedAt).ThenBy(c => c.Id).First();
         }
-
+        
+        // 積分計算helpers
         private int CalculateRefundPoints(int commissionPoints)
         {
             if( commissionPoints <= 0)
@@ -166,6 +230,33 @@ namespace Stycue.Api.Services
             return refundPoints;
         }
 
+        private int CalculateRewardPoints(int commissionPoints)
+        {
+            if(commissionPoints <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(commissionPoints),
+                    "Commission points 必須大於 0");
+            }
+
+            var feePercent = _pointOptions.Value.FeePercent;
+
+            // 預防性驗證，避免未來 helper 被單獨呼叫時產生不合法的退款交易
+            if(feePercent < 0 || feePercent >= 100)
+            {
+                throw new InvalidOperationException("Points:FeePercent 必須介於 0 與 99");
+            }
+
+            var feePoints = (int)Math.Ceiling(commissionPoints * feePercent / 100m);
+            var rewardPoints = commissionPoints - feePoints;
+
+            if( rewardPoints <= 0)
+            {
+                throw new InvalidOperationException("扣除手續費後的獎勵積分必須大於 0");
+            }
+
+            return rewardPoints;
+        }
+
 
         private static CommissionNotificationContext BuildNotificationContext(
             Commission commission, int recipientUserId)
@@ -190,6 +281,24 @@ namespace Stycue.Api.Services
                 if(current is SqlException sqlException &&
                     (sqlException.Number == 2601 || sqlException.Number == 2627) &&
                     sqlException.Message.Contains("UX_PointTransactions_CommissionSettlement", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsNotificationDeduplicationUniqueConstraintViolation(DbUpdateException exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+
+            for(Exception? current = exception; current != null; current = current.InnerException)
+            {
+                if(current is SqlException sqlException &&
+                    (sqlException.Number == 2601 || sqlException.Number == 2627) &&
+                    sqlException.Message.Contains(
+                        "UX_Notifications_RecipientUserId_DeduplicationKey", StringComparison.Ordinal))
                 {
                     return true;
                 }
@@ -233,27 +342,240 @@ namespace Stycue.Api.Services
 
             if(commission.ExpirationCycle == 1)
             {
-                await _notificationService.CreateCommissionExpiredAsync(context, commission.ExpirationCycle, cancellationToken);
-                await _notificationService.CreateCommissionFirstExpirationActionRequiredAsync(context, cancellationToken);
+                var expiredCreated = await _notificationService.CreateCommissionExpiredAsync(context, commission.ExpirationCycle, cancellationToken);
+                var actionReminderCreated = await _notificationService.CreateCommissionFirstExpirationActionRequiredAsync(context, cancellationToken);
 
-                return new ExpiredNotificationResult(true, true, false);
+                return new ExpiredNotificationResult(expiredCreated, actionReminderCreated, false);
             }
 
             if(commission.ExpirationCycle == 2)
             {
-                await _notificationService.CreateCommissionExpiredAsync(context, commission.ExpirationCycle, cancellationToken);
+                var expiredCreated = await _notificationService.CreateCommissionExpiredAsync(context, commission.ExpirationCycle, cancellationToken);
                 
                 if(eligibleRootComments.Count == 0)
                 {
-                    return new ExpiredNotificationResult(true, false, false);
+                    return new ExpiredNotificationResult(expiredCreated, false, false);
                 }
 
-                await _notificationService.CreateBestCommentSelectionRequiredAsync(context, commission.ExpirationCycle, cancellationToken);
+                var selectionReminderCreated =  await _notificationService.CreateBestCommentSelectionRequiredAsync(context, commission.ExpirationCycle, cancellationToken);
 
-                return new ExpiredNotificationResult(true, false, true);
+                return new ExpiredNotificationResult(expiredCreated, false, selectionReminderCreated);
             }
 
             return new ExpiredNotificationResult(false, false, false);
+        }
+
+        // 結算寫入 helpers
+
+        private async Task<AutomaticRewardSettlementResult> SettleAutomaticRewardAsync(
+            Commission commission, Comment awardedComment, DateTime nowUtc, CancellationToken cancellationToken)
+        {
+            var rewardPoints = CalculateRewardPoints(commission.Points);
+
+            // Point transaction
+            var rewardResult = await _pointService.AddPointsAsync(
+                awardedComment.UserId, rewardPoints, PointTransactionType.CommissionAutoReward,
+                PointReferenceType.Commission, commission.Id, $"系統自動選出最佳留言，獲得委託積分：{commission.Title}",
+                cancellationToken);
+
+            if(!rewardResult.Success)
+            {
+                throw new CommissionSettlementWriteException(commission.Id, "AddAutomaticRewardPoints",
+                    rewardResult.ErrorCode, rewardResult.Message);
+            }
+
+            // update commission status
+            commission.Status = CommissionStatus.Rewarded;
+            commission.AwardedCommentId = awardedComment.Id;
+            commission.RewardSettledAt = nowUtc;
+            commission.AwardedAt = nowUtc;
+            commission.UpdatedAt = nowUtc;
+
+            // add notification
+            var notificationContext = BuildNotificationContext(commission, awardedComment.UserId);
+            await _notificationService.CreateCommissionAutomaticRewardGrantedAsync(
+                notificationContext, rewardPoints, cancellationToken);
+
+            return new AutomaticRewardSettlementResult(awardedComment.Id, awardedComment.UserId,
+                rewardPoints, nowUtc);
+
+        }
+
+        private async Task<NoCommentSettlementResult> SettleNoCommentCommissionAsync(
+            Commission commission, DateTime nowUtc, CancellationToken cancellationToken)
+        {
+            var refundPoints = CalculateRefundPoints(commission.Points);
+
+            var refundResult = await _pointService.AddPointsAsync(commission.UserId, refundPoints,
+                PointTransactionType.CommissionRefund, PointReferenceType.Commission, commission.Id,
+                $"委託到期未收到合格留言，退還委託積分：{commission.Title}", cancellationToken);
+
+            if(!refundResult.Success)
+            {
+                throw new CommissionSettlementWriteException(commission.Id, "AddNoCommentRefundPoints",
+                    refundResult.ErrorCode, refundResult.Message);
+            }
+
+            commission.Status = CommissionStatus.NoAward;
+            commission.RewardSettledAt = nowUtc;
+            commission.UpdatedAt = nowUtc;
+
+            var notificationContext = BuildNotificationContext(commission, commission.UserId);
+            await _notificationService.CreateCommissionExpiredWithoutCommentsRefundedAsync(
+                notificationContext, refundPoints, cancellationToken);
+
+            return new NoCommentSettlementResult(commission.UserId, refundPoints, nowUtc);
+
+        }
+
+        // 單筆流程 helper
+        private async Task<CommissionSettlementProcessResult> ProcessCommissionAsync(
+            int commissionId, DateTime nowUtc, CancellationToken cancellationToken)
+        {
+            var skippedResult = new CommissionSettlementProcessResult(commissionId,
+                false, false, false, false, false, false, true);
+
+            try
+            {
+                await using (var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
+                {
+                    try
+                    {
+                        var commission = await FindCommissionForSettlementUpdateAsync(commissionId, cancellationToken);
+
+                        if (commission == null || !IsSettlementEligible(commission, nowUtc))
+                        {
+                            return skippedResult;
+                        }
+
+                        var eligibleRootComments = GetEligibleRootComments(commission);
+
+                        var notificationResult = await EnsureExpiredNotificationsAsync(
+                            commission, eligibleRootComments, cancellationToken);
+
+                        if (IsWithinBestCommentSelectionGracePeriod(commission, nowUtc))
+                        {
+                            await _dbContext.SaveChangesAsync(cancellationToken);
+                            await transaction.CommitAsync(cancellationToken);
+
+                            return new CommissionSettlementProcessResult(commission.Id,
+                                true, notificationResult.ExpiredNotificationCreated, notificationResult.FirstExpirationActionReminderCreated,
+                                notificationResult.BestCommentSelectionReminderCreated, false, false, false);
+                        }
+
+                        var wasAutoRewarded = false;
+                        var wasRefunded = false;
+
+                        if (eligibleRootComments.Count > 0)
+                        {
+                            var awardedComment = SelectAutomaticAwardComment(eligibleRootComments);
+
+                            await SettleAutomaticRewardAsync(commission, awardedComment, nowUtc, cancellationToken);
+
+                            wasAutoRewarded = true;
+                        }
+                        else
+                        {
+                            await SettleNoCommentCommissionAsync(commission, nowUtc, cancellationToken);
+
+                            wasRefunded = true;
+                        }
+
+                        await _dbContext.SaveChangesAsync(cancellationToken);
+                        await transaction.CommitAsync(cancellationToken);
+
+                        return new CommissionSettlementProcessResult(commission.Id,
+                            true, notificationResult.ExpiredNotificationCreated, notificationResult.FirstExpirationActionReminderCreated,
+                            notificationResult.BestCommentSelectionReminderCreated, wasAutoRewarded, wasRefunded,
+                            false);
+                    }
+                    catch (DbUpdateConcurrencyException ex)
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+
+                        _logger.LogInformation(ex,
+                            "Commission settlement lost concurrency race. CommissionId: {CommissionId}", commissionId);
+
+                        return skippedResult;
+                    }
+                    catch(DbUpdateException ex) when (IsCommissionSettlementUniqueConstraintViolation(ex))
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+
+                        _logger.LogInformation(ex,
+                            "Commission settlement duplicate transaction prevented. CommissionId: {CommissionId}", commissionId);
+
+                        return skippedResult;
+                    }
+                    catch(DbUpdateException ex) when (IsNotificationDeduplicationUniqueConstraintViolation(ex))
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+
+                        _logger.LogInformation(ex,
+                            "Commission settlement notification was already created by another instance. CommissionId: {CommissionId}",
+                            commissionId);
+
+                        return skippedResult;
+                    }
+                    catch(CommissionSettlementWriteException ex)
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+
+                        _logger.LogError(ex,
+                            "Commission settlement write failed. CommissionId: {CommissionId}, Operation: {Operation}, ErrorCode: {ErrorCode}",
+                            ex.CommissionId, ex.Operation, ex.ErrorCode);
+
+                        throw;
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+
+                        throw;
+                    }
+                }
+            }
+            finally
+            {
+                _dbContext.ChangeTracker.Clear();
+            }
+        }
+
+        private static CommissionSettlementRunResult BuildRunResult(
+            int candidateCount, IReadOnlyCollection<CommissionSettlementProcessResult> processResults, int failedCount)
+        {
+            ArgumentNullException.ThrowIfNull(processResults);
+
+            if( candidateCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(candidateCount),
+                    "candidateCount 不可小於 0");
+            }
+
+            if( failedCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(failedCount),
+                    "failedCount 不可小於 0");
+            }
+
+            if( processResults.Count + failedCount != candidateCount)
+            {
+                throw new InvalidOperationException(
+                    "本輪候選委託數與處理結果加失敗數不一致");
+            }
+
+            return new CommissionSettlementRunResult
+            {
+                CandidateCount = candidateCount,
+                ProcessedCount = processResults.Count(x => x.WasProcessed),
+                ExpiredNotificationCount = processResults.Count(x => x.ExpiredNotificationCreated),
+                FirstExpirationActionReminderCount = processResults.Count(x => x.FirstExpirationActionReminderCreated),
+                BestCommentSelectionReminderCount = processResults.Count(x => x.BestCommentSelectionReminderCreated),
+                AutoRewardedCount = processResults.Count(x => x.WasAutoRewarded),
+                RefundedCount = processResults.Count(x => x.WasRefunded),
+                SkippedCount = processResults.Count(x => x.WasSkipped),
+                FailedCount = failedCount
+            };
         }
     }
 }

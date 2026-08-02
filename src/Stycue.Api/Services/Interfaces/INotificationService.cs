@@ -33,13 +33,13 @@ namespace Stycue.Api.Services.Interfaces
         Task CreateCommissionExpiredWithoutCommentsRefundedAsync(
             CommissionNotificationContext commission, int refundPoints, CancellationToken cancellationToken = default);
 
-        Task CreateCommissionExpiredAsync(
+        Task<bool> CreateCommissionExpiredAsync(
             CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default);
 
-        Task CreateBestCommentSelectionRequiredAsync(
+        Task<bool> CreateBestCommentSelectionRequiredAsync(
             CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default);
 
-        Task CreateCommissionFirstExpirationActionRequiredAsync(
+        Task<bool> CreateCommissionFirstExpirationActionRequiredAsync(
             CommissionNotificationContext commission, CancellationToken cancellationToken = default);
 
         Task CreateCommissionCommentCreatedAsync(

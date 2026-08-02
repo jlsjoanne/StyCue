@@ -298,7 +298,7 @@ namespace Stycue.Api.Services
             await AddIfNotExistsAsync(command, cancellationToken);
         }
 
-        public async Task CreateCommissionExpiredAsync(
+        public async Task<bool> CreateCommissionExpiredAsync(
             CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default)
         {
             ValidateCommissionNotificationContext(commission);
@@ -315,10 +315,10 @@ namespace Stycue.Api.Services
                 ReferenceId: commission.CommissionId,
                 DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, $"expiration:{expirationCycle}:expired"));
 
-            await AddIfNotExistsAsync(command, cancellationToken);
+            return await AddIfNotExistsAsync(command, cancellationToken);
         }
 
-        public async Task CreateBestCommentSelectionRequiredAsync(
+        public async Task<bool> CreateBestCommentSelectionRequiredAsync(
             CommissionNotificationContext commission, int expirationCycle, CancellationToken cancellationToken = default)
         {
             ValidateCommissionNotificationContext(commission);
@@ -334,10 +334,10 @@ namespace Stycue.Api.Services
                 ReferenceId: commission.CommissionId,
                 DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, $"expiration:{expirationCycle}:best-comment-selection-required"));
 
-            await AddIfNotExistsAsync(command, cancellationToken);
+            return await AddIfNotExistsAsync(command, cancellationToken);
         }
 
-        public async Task CreateCommissionFirstExpirationActionRequiredAsync(
+        public async Task<bool> CreateCommissionFirstExpirationActionRequiredAsync(
             CommissionNotificationContext commission, CancellationToken cancellationToken = default)
         {
             ValidateCommissionNotificationContext(commission);
@@ -352,7 +352,7 @@ namespace Stycue.Api.Services
                 ReferenceId: commission.CommissionId,
                 DeduplicationKey: BuildCommissionDeduplicationKey(commission.CommissionId, "expiration:1:action-required"));
 
-            await AddIfNotExistsAsync(command, cancellationToken);
+            return await AddIfNotExistsAsync(command, cancellationToken);
         }
 
         public async Task CreateCommissionCommentCreatedAsync(
@@ -481,7 +481,7 @@ namespace Stycue.Api.Services
             int? ReferenceId,
             string DeduplicationKey);
 
-        private async Task AddIfNotExistsAsync(NotificationCreateCommand command, CancellationToken cancellationToken)
+        private async Task<bool> AddIfNotExistsAsync(NotificationCreateCommand command, CancellationToken cancellationToken)
         {
             if(command.RecipientUserId <= 0)
             {
@@ -519,7 +519,7 @@ namespace Stycue.Api.Services
 
             if(isAlreadyTracked)
             {
-                return;
+                return false;
             }
 
             var alreadyExists = await _dbContext.Notifications.AsNoTracking()
@@ -527,7 +527,7 @@ namespace Stycue.Api.Services
 
             if (alreadyExists)
             {
-                return;
+                return false;
             }
 
             _dbContext.Notifications.Add(new Notification
@@ -544,6 +544,8 @@ namespace Stycue.Api.Services
                 CreatedAt = DateTime.UtcNow,
                 DeduplicationKey = command.DeduplicationKey
             });
+
+            return true;
         }
 
         // 產生固定 key

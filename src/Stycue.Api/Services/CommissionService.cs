@@ -237,7 +237,7 @@ namespace Stycue.Api.Services
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollbackEx)
                 {
@@ -405,11 +405,22 @@ namespace Stycue.Api.Services
 
                 return ApiResponse<CloseCommissionResponse>.SuccessResult(response, "委託已關閉，積分已退還");
             }
+            catch (DbUpdateException ex) when (IsCommissionSettlementUniqueConstraintViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(ex,
+                    "Close commission lost settlement/refund race. CommissionId: {CommissionId}, UserId: {UserId}",
+                    commissionId, userId);
+
+                return ApiResponse<CloseCommissionResponse>.FailResult(
+                    "此委託已由其他流程完成結算或退款，請重新整理後查看結果", "COMMISSION_SETTLEMENT_CONFLICT");
+            }
             catch (Exception ex)
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch (Exception rollbackEx)
                 {
@@ -580,7 +591,7 @@ namespace Stycue.Api.Services
             }
             catch (DbUpdateConcurrencyException ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
+                await transaction.RollbackAsync(CancellationToken.None);
 
                 _logger.LogInformation(ex,
                     "Repost lost concurrency race. CommissionId: {CommissionId}", commissionId);
@@ -590,7 +601,7 @@ namespace Stycue.Api.Services
             }
             catch(DbUpdateException dbex) when (IsCommissionRepostUniqueConstraintViolation(dbex))
             {
-                await transaction.RollbackAsync(cancellationToken);
+                await transaction.RollbackAsync(CancellationToken.None);
 
                 _logger.LogInformation(dbex,
                     "Commission repost already exists. CommissionId: {CommissionId}", commissionId);
@@ -602,7 +613,7 @@ namespace Stycue.Api.Services
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollbackex)
                 {
@@ -746,7 +757,7 @@ namespace Stycue.Api.Services
             }
             catch (DbUpdateConcurrencyException ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
+                await transaction.RollbackAsync(CancellationToken.None);
 
                 _logger.LogInformation(ex,
                     "Boost lost concurrency race. CommissionId: {CommissionId}", commissionId);
@@ -758,7 +769,7 @@ namespace Stycue.Api.Services
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollEx)
                 {
@@ -971,7 +982,7 @@ namespace Stycue.Api.Services
             }
             catch(DbUpdateConcurrencyException ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
+                await transaction.RollbackAsync(CancellationToken.None);
 
                 _logger.LogInformation(ex,
                     "Best-comment settlement lost concurrency race. CommissionId: {CommissionId}",
@@ -982,7 +993,11 @@ namespace Stycue.Api.Services
             }
             catch(DbUpdateException ex) when (IsCommissionSettlementUniqueConstraintViolation(ex))
             {
-                await transaction.RollbackAsync(cancellationToken);
+                await transaction.RollbackAsync(CancellationToken.None);
+
+                _logger.LogInformation(ex,
+                    "Best-comment settlement duplicate transaction prevented. CommissionId: {CommissionId}, UserId: {UserId}, CommentId: {CommentId}",
+                    commissionId, userId, request?.CommentId);
 
                 return ApiResponse<CommissionRewardResponse>.FailResult(
                     "此委託已由其他流程完成結算，請重新整理後查看結果", "COMMISSION_SETTLEMENT_CONFLICT");
@@ -991,7 +1006,7 @@ namespace Stycue.Api.Services
             {
                 try
                 {
-                    await transaction.RollbackAsync(cancellationToken);
+                    await transaction.RollbackAsync(CancellationToken.None);
                 }
                 catch(Exception rollEx)
                 {

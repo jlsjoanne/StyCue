@@ -450,7 +450,9 @@ namespace Stycue.Api.Data
                 {
                     x.RecipientUserId,
                     x.DeduplicationKey
-                }).IsUnique();
+                })
+                .HasDatabaseName("UX_Notifications_RecipientUserId_DeduplicationKey")
+                .IsUnique();
 
                 entity.HasIndex(x => new
                 {
