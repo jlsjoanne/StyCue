@@ -38,6 +38,11 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 - 以 Point Wallet 保存目前積分餘額，並透過 Point Transaction 保留每筆異動紀錄。
 - 將建立委託、加碼、提前關閉退款、最佳留言獎勵與到期補結算納入一致的商業流程。
 
+#### 資料庫併發控制
+
+- 針對點數餘額、委託加碼與獎勵結算等可能同時發生的交易，透過資料庫併發控制避免重複扣款、餘額覆寫或重複結算。
+- 在發生併發衝突時，透過明確的錯誤處理與交易流程維持資料一致性與可追溯性。
+
 #### 可替換的穿搭搜尋設計
 
 - 以 SearchDocument 將貼文與委託建立統一搜尋讀模型，避免跨多個交易資料表進行複雜搜尋。
@@ -49,6 +54,11 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 - JWT Bearer Authentication 與 Google ID Token Verification。
 - 私有 Azure Blob container 搭配短效 read-only SAS URL。
 - ECPay 點數購買、付款驗證，以及 OpenAPI／Scalar API 文件與統一例外回應。
+
+#### Background Service 與排程處理
+
+- 使用 ASP.NET Core Background Service 執行非同步與週期性後台工作。
+- 處理例如委託到期檢查、逾期獎勵結算等不應依賴使用者請求觸發的流程，確保生命週期狀態能持續被正確處理。
 
 ### 後端架構概覽
 ```
@@ -116,6 +126,11 @@ This repository showcases the project's ASP.NET Core Web API **backend**, featur
 - A Point Wallet stores the current balance while Point Transactions preserve an auditable record of every change.
 - Commission creation, boosts, early-close refunds, best-comment rewards, and expiry settlement are handled as consistent business workflows.
 
+#### Database Concurrency Control
+
+- Database concurrency control protects simultaneous point-balance, commission-boost, and reward-settlement transactions from duplicate charges, overwritten balances, or duplicate settlements.
+- Explicit conflict handling and transaction workflows maintain data consistency and traceability when concurrency conflicts occur.
+
 #### Replaceable Fashion Search Design
 
 - SearchDocument projects posts and commissions into a unified search read model, avoiding complex searches across multiple transactional tables.
@@ -127,6 +142,11 @@ This repository showcases the project's ASP.NET Core Web API **backend**, featur
 - JWT Bearer Authentication and Google ID Token Verification.
 - Private Azure Blob containers with short-lived read-only SAS URLs.
 - ECPay point purchases and payment verification, plus OpenAPI/Scalar documentation and consistent exception responses.
+
+#### Background Services and Scheduled Processing
+
+- ASP.NET Core Background Services run asynchronous and recurring background work.
+- Processes such as commission-expiry checks and overdue reward settlement do not depend on user requests, ensuring lifecycle states continue to be handled correctly.
 
 ### Backend Architecture Overview
 
