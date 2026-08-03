@@ -1,7 +1,7 @@
 # StyCue 後端 API / Backend API
 
 StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的社群平台。
-此 repository 主要展示此專案後端的 ASP.NET Core Web API 實作，涵蓋資源導向 API、委託與點數交易流程、圖片儲存、第三方金流整合，以及服飾領域搜尋設計。
+此 repository 主要展示此專案後端的 ASP.NET Core Web API 實作，涵蓋資源導向 API、委託與積分交易流程、圖片儲存、第三方金流整合，以及服飾領域搜尋設計。
 
 ## 技術棧 / Tech Stack
 
@@ -22,7 +22,7 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 | 積分帳務 | 錢包、每日領取、交易紀錄、退款與獎勵追溯 |
 | 身分驗證與媒體存取 | JWT、Google ID Token、Azure Blob Storage、SAS Token |
 | 搜尋與資訊檢索 | SearchDocument、同義詞擴展、SQL Server Full-Text Search |
-| 整合金流 | ECPay 訂單、付款驗證與點數入帳 |
+| 整合金流 | ECPay 訂單、付款驗證與積分入帳 |
 
 ### 技術亮點
 
@@ -33,14 +33,14 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 - 依循 Resource-oriented RESTful API 設計，使用資源導向路由、HTTP Methods 與標準 Status Codes 建立一致的 API 合約。
 - 委託的 Close、Repost、Boost 與最佳留言等具領域意義的操作，以明確 command endpoint 表達生命週期狀態轉換。
 
-#### 可追溯的點數與委託獎勵流程
+#### 可追溯的積分與委託獎勵流程
 
 - 以 Point Wallet 保存目前積分餘額，並透過 Point Transaction 保留每筆異動紀錄。
 - 將建立委託、加碼、提前關閉退款、最佳留言獎勵與到期補結算納入一致的商業流程。
 
 #### 資料庫併發控制
 
-- 針對點數餘額、委託加碼與獎勵結算等可能同時發生的交易，透過資料庫併發控制避免重複扣款、餘額覆寫或重複結算。
+- 針對積分餘額、委託加碼與獎勵結算等可能同時發生的交易，透過資料庫併發控制避免重複扣款、餘額覆寫或重複結算。
 - 在發生併發衝突時，透過明確的錯誤處理與交易流程維持資料一致性與可追溯性。
 
 #### 可替換的穿搭搜尋設計
@@ -53,7 +53,7 @@ StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的�
 
 - JWT Bearer Authentication 與 Google ID Token Verification。
 - 私有 Azure Blob container 搭配短效 read-only SAS URL。
-- ECPay 點數購買、付款驗證，以及 OpenAPI／Scalar API 文件與統一例外回應。
+- ECPay 購買積分、付款驗證，以及 OpenAPI／Scalar API 文件與統一例外回應。
 
 #### Background Service 與排程處理
 
@@ -92,7 +92,7 @@ StyCue API 已整合 [Scalar API Documentation](https://stycue.rocket-coding.com
 | 身分與使用者 | auth、users |
 | 社群內容 | posts、commissions、comments、tags |
 | 社群互動 | likes、favorites、follows |
-| 圖片與點數 | images、points、point-purchases |
+| 圖片與積分 | images、points、point-purchases |
 | 探索功能 | homepage、search、search-history |
 
 ---
