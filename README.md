@@ -3,6 +3,8 @@
 StyCue專案是開發一個以穿搭分享、提問與委託媒合為核心的社群平台。
 此 repository 主要展示此專案後端的 ASP.NET Core Web API 實作，涵蓋資源導向 API、委託與積分交易流程、圖片儲存、第三方金流整合，以及服飾領域搜尋設計。
 
+**專案介紹頁** : [StyCue ｜穿搭委託分享平台](https://chalk-freedom-ec6.notion.site/StyCue-a126ab47eb48824cbdc481b772c7253d)
+
 ## 技術棧 / Tech Stack
 
 | 領域 / Area | 技術 / Technology |
@@ -100,6 +102,8 @@ StyCue API 已整合 [Scalar API Documentation](https://stycue.rocket-coding.com
 
 StyCue project is to develop a community platform for outfit sharing, questions, and styling commissions. 
 This repository showcases the project's ASP.NET Core Web API **backend**, featuring resource-oriented APIs, commission and point-transaction workflows, media storage, payment integration, and fashion-domain search.
+
+**Project Intro** : [StyCue](https://chalk-freedom-ec6.notion.site/StyCue-a126ab47eb48824cbdc481b772c7253d)
 
 ### Core Capabilities
 
